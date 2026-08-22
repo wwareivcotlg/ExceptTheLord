@@ -1,0 +1,10 @@
+{
+  "name": "Except the Lord Build the House",
+  "short_name": "Build the House",
+  "start_url": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#241F5C",
+  "theme_color": "#3C3489",
+  "icons": []
+}
