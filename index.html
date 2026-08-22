@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#3C3489">
+<title>Except the Lord Build the House</title>
+<link rel="manifest" href="manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Archivo:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --purple: #3C3489;
+    --purple-deep: #241F5C;
+    --gold: #B87A00;
+    --gold-light: #E4B23F;
+    --plaster: #EFE7D8;
+    --ink: #221C14;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: var(--purple-deep);
+    font-family: Archivo, system-ui, sans-serif;
+    color: var(--plaster);
+    overscroll-behavior: none;
+  }
+  #stage { display: block; width: 100vw; height: 100dvh; touch-action: none; }
+
+  /* --- Loading veil --- */
+  #veil {
+    position: fixed; inset: 0; z-index: 20;
+    display: grid; place-content: center; gap: .9rem; text-align: center;
+    padding: 2rem;
+    background: radial-gradient(120% 90% at 50% 15%, #4A409F 0%, var(--purple-deep) 62%, #17133F 100%);
+    transition: opacity .7s ease, visibility .7s;
+  }
+  #veil.gone { opacity: 0; visibility: hidden; }
+  #veil h1 {
+    margin: 0;
+    font-family: Fraunces, Georgia, serif;
+    font-weight: 800;
+    font-size: clamp(1.9rem, 8vw, 3.1rem);
+    line-height: 1.02;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+  }
+  #veil h1 em { font-style: normal; color: var(--gold-light); display: block; }
+  #veil p {
+    margin: 0; max-width: 30ch; justify-self: center;
+    font-size: .82rem; line-height: 1.6; opacity: .72;
+  }
+  .rule {
+    width: 3.5rem; height: 2px; justify-self: center;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  }
+
+  /* --- HUD --- */
+  #hud {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+    display: flex; align-items: center; gap: .5rem;
+    padding: .7rem max(.9rem, env(safe-area-inset-left)) max(.9rem, env(safe-area-inset-bottom));
+    background: linear-gradient(transparent, rgba(23,19,63,.86) 45%);
+    pointer-events: none;
+  }
+  #build {
+    font-size: .62rem; letter-spacing: .06em; text-transform: uppercase;
+    opacity: .45; white-space: nowrap; font-variant-numeric: tabular-nums;
+  }
+  #status {
+    flex: 1; min-width: 0;
+    font-size: .74rem; letter-spacing: .01em; opacity: .85;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  button {
+    pointer-events: auto;
+    font: inherit; font-size: .72rem; font-weight: 600;
+    color: var(--plaster);
+    padding: .5rem .8rem; border-radius: 999px;
+    border: 1px solid rgba(239,231,216,.22);
+    background: rgba(36,31,92,.72);
+    backdrop-filter: blur(6px);
+    cursor: pointer;
+  }
+  button:active { background: rgba(184,122,0,.4); }
+  button:focus-visible { outline: 2px solid var(--gold-light); outline-offset: 2px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    #veil { transition: none; }
+  }
+</style>
+</head>
+<body>
+  <canvas id="stage"></canvas>
+
+  <div id="hud">
+    <span id="status">Opening the doors…</span>
+    <span id="build" title="Running build">—</span>
+    <button id="turn" type="button">Turn</button>
+    <button id="recenter" type="button">Recenter</button>
+  </div>
+
+  <div id="veil">
+    <h1>Except the Lord<em>Build the House</em></h1>
+    <div class="rule"></div>
+    <p>They labour in vain that build it. — Psalm 127:1</p>
+  </div>
+
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.128.0/build/three.module.js" } }
+</script>
+<script type="module" src="src/main.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', async () => {
+      try {
+        const reg = await navigator.serviceWorker.register('sw.js');
+        reg.update();   // pull a new worker now, not on some later visit
+      } catch {}
+    });
+  }
+</script>
+</body>
+</html>
