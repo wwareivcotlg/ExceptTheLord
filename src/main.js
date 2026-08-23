@@ -12,7 +12,9 @@ import { loadLocal, writeLocal, getOrCreatePlayerId } from './core/save.js';
 import { resolveModifiers } from './core/modifiers.js';
 import { advanceProduction, advanceConstruction, constructionRemaining } from './core/production.js';
 import { buildCatalog, startConstruction, cancelConstruction, moveRoom,
-         moveCost, canMoveTo, canAfford, canPickUp } from './core/build.js';
+         moveCost, canAfford, canPickUp } from './core/build.js';
+import { chairStatus, deployFoldingChairs } from './core/sanctuary.js';
+import { holdPrayerMeeting, queueCapacity } from './core/prayer.js';
 import { recommendSermon, sermonLibrary, unlockSermon, startService,
          canHoldService, serviceProgress, isServiceFinished, finishService,
          sermonPayout } from './core/service.js';
@@ -27,12 +29,12 @@ import { installTapHandler } from './render/picking.js';
 import { PathCache } from './sim/pathfinding.js';
 import { ROOM_BY_ID } from './data/rooms.js';
 import { VisitorSystem } from './sim/visitors.js';
-import { BUILD } from './data/controls.js';
+import { BUILD_LABEL } from './data/controls.js';
 import { ministryCatalog, foundMinistry } from './core/ministry.js';
 import { applyProgress, levelProgress } from './core/progression.js';
 import { advancePastor, ensurePastor } from './core/pastor.js';
-import { todayEvent, nextSpecialDay, grantRehearsalBuff, pendingRehearsal,
-         needsOnboarding, setSchedule, selectableDays, getSchedule } from './core/rhythm.js';
+import { todayEvent, grantRehearsalBuff, pendingRehearsal,
+         needsOnboarding, setSchedule, selectableDays } from './core/rhythm.js';
 import { buildAwayReport, shouldShowAway, pushAwayHistory, awayHistory } from './core/away.js';
 
 const $ = (id) => document.getElementById(id);
@@ -126,12 +128,35 @@ async function boot() {
   // ---------- Build menu ----------
   function renderCatalog() {
     const list = $('catalog');
+    list.innerHTML = '';
+
+    // Anything under construction can be called off for a full
+    // refund. Nothing is gained by punishing a change of mind.
+    for (const site of state.construction || []) {
+      const def = ROOM_BY_ID[site.roomId];
+      const left = duration(constructionRemaining(site, serverNow()));
+      const btn = document.createElement('button');
+      btn.className = 'card';
+      btn.innerHTML =
+        `<span class="nm">${def?.name || site.roomId}</span>` +
+        `<span class="price">Cancel</span>` +
+        `<span class="meta">Building · ${left} left · full refund</span>`;
+      btn.addEventListener('click', () => {
+        const res = cancelConstruction(state, site.roomId);
+        if (!res.ok) return;
+        status.textContent = `${def?.name || site.roomId} called off. ${money(res.refunded.offering || 0)} returned.`;
+        layoutChanged();
+        renderCatalog();
+        save();
+      });
+      list.appendChild(btn);
+    }
+
     const entries = buildCatalog(state);
-    if (!entries.length) {
+    if (!entries.length && !(state.construction || []).length) {
       list.innerHTML = '<p style="opacity:.6;font-size:.78rem">Everything available is already built.</p>';
       return;
     }
-    list.innerHTML = '';
     for (const e of entries) {
       const btn = document.createElement('button');
       btn.className = 'card';
@@ -440,6 +465,83 @@ async function boot() {
     $('svc-verse').textContent = rec.scripture;
   }
 
+  // ---------- The prayer meeting ----------
+  //
+  // One Elder serves the whole queue at once. This is why the queue
+  // cap is generous: a long queue should read as a reward waiting
+  // to be collected, never as a chore.
+  function updatePrayer(now) {
+    const panel = $('prayer');
+    const waiting = state.queue.length;
+    const hasRoom = state.rooms.some((r) => r.id === 'prayer_room');
+
+    if (!waiting || !hasRoom) { panel.classList.remove('on'); return; }
+    panel.classList.add('on');
+
+    const cap = queueCapacity(state, now);
+    $('prayer-waiting').textContent =
+      `${waiting} awaiting prayer${waiting >= cap ? ' · room is full' : ''}`;
+    $('prayer-go').textContent = `Pray with ${waiting}`;
+  }
+
+  $('prayer-go').addEventListener('click', () => {
+    const now = serverNow();
+    const res = holdPrayerMeeting(state, now);
+    if (!res.ok) return;
+    visitors.concludePrayer(now);
+    status.textContent =
+      `One Elder, ${res.served} souls prayed for. +${money(res.offering)} offering, +${res.favor} favor.`;
+    save();
+  });
+
+  // ---------- The deacons and the folding chairs ----------
+  //
+  // Only offered when it would actually help: people waiting in the
+  // vestibule, or a full house. Otherwise the prompt is noise.
+  function updateChairs(now) {
+    const panel = $('chairs');
+    const st = chairStatus(state, now);
+
+    const worthOffering = st.waiting > 0 || st.reason === 'cooldown' || st.reason === 'cannot_afford';
+    if (!worthOffering || st.reason === 'not_needed') {
+      panel.classList.remove('on');
+      return;
+    }
+    panel.classList.add('on');
+
+    const waiting = st.waiting === 1
+      ? '1 waiting in the vestibule'
+      : `${st.waiting} waiting in the vestibule`;
+
+    if (st.reason === 'cooldown') {
+      const mins = Math.ceil(st.cooldownRemainingMs / 60000);
+      $('chairs-waiting').textContent = `${waiting} · chairs ready in ${mins}m`;
+      $('chairs-go').disabled = true;
+      $('chairs-go').textContent = 'Chairs stored';
+      return;
+    }
+    if (st.reason === 'already_out') {
+      $('chairs-waiting').textContent = `${waiting} · chairs are out`;
+      $('chairs-go').disabled = true;
+      $('chairs-go').textContent = 'Chairs out';
+      return;
+    }
+
+    $('chairs-waiting').textContent = waiting;
+    $('chairs-go').disabled = !st.canDeploy;
+    $('chairs-go').textContent = st.canDeploy
+      ? `Bring out ${st.count} chairs · ${money(st.cost)}`
+      : `Need ${money(st.cost)} offering`;
+  }
+
+  $('chairs-go').addEventListener('click', () => {
+    const res = deployFoldingChairs(state, serverNow());
+    if (!res.ok) return;
+    status.textContent =
+      `The deacons set out ${res.chairs} chairs. ${res.seated} came in from the vestibule.`;
+    save();
+  });
+
   // ---------- Tapping visitors ----------
   installTapHandler(canvas, () => (placement.active ? [] : crowd.candidates()), (hit) => {
     visitors.serve(hit.id, serverNow(), { tapped: true });
@@ -494,6 +596,8 @@ async function boot() {
     pastor.update(dt, now);
 
     updateService(now);
+    updateChairs(now);
+    updatePrayer(now);
 
     $('p-off').textContent = money(state.currency.offering);
     $('p-fav').textContent = money(state.currency.favor);
@@ -526,7 +630,7 @@ async function boot() {
 
   $('turn').addEventListener('click', () => rig.turn());
   $('recenter').addEventListener('click', () => rig.reset());
-  $('build').textContent = BUILD;
+  $('build').textContent = BUILD_LABEL;
 
   sceneApi.start();
   veil.classList.add('gone');

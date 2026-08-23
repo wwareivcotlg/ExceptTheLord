@@ -10,14 +10,14 @@ import { rotatedSize, rotateLocal, rotateFacing, footprintTiles, doorAndApproach
          PLACEMENT_REASONS } from '../src/core/grid.js';
 import { findPath, PathCache, distanceToRoom } from '../src/sim/pathfinding.js';
 import { tileToWorld, roomTransform, floorExtent, pathToWorld, cameraFrame,
-         pewLayout, chairSlots, seatSlots, chancelLayout, localToWorld,
-         seatedPose, SEAT_TOP_Y, TILE } from '../src/render/layout.js';
+         pewLayout, chairSlots, seatSlots, allSeatSlots, chancelLayout,
+         localToWorld, seatedPose, SEAT_TOP_Y, TILE } from '../src/render/layout.js';
 import { PALETTE, LIGHTING, QUALITY } from '../src/render/palette.js';
 import { readFileSync } from 'node:fs';
 import { VisitorSystem, WALK_SPEED, AUTO_SERVE_DELAY, SERVE_DURATION } from '../src/sim/visitors.js';
 import { serveNeed, canServe, TAP_BONUS } from '../src/core/serve.js';
 import { pickNearest } from '../src/render/picking.js';
-import { CONTROLS, sign } from '../src/data/controls.js';
+import { CONTROLS, sign, BUILD, BUILD_LABEL } from '../src/data/controls.js';
 import { buildCatalog, buildStatus, startConstruction, cancelConstruction,
          moveRoom, canAfford, suggestPlacement, hasSpaceFor } from '../src/core/build.js';
 import { advanceProduction, advanceConstruction, constructionProgress,
@@ -706,6 +706,10 @@ console.log('\n=== 23. Sanctuary furnishing ===');
        Math.abs(c.x) > t.size.w / 2 - plan.sideMargin - 1e-9));
   ok('chairs are set out on both sides',
      new Set(chairs.map((c) => c.side)).size === 2);
+  ok('the aisles hold every chair the trustees can bring',
+     chairSlots(t.size, plan, 99).length >= 10,
+     '(tying chairs to pew rows capped the aisles at six)');
+  ok('asking for fewer sets out fewer', chairSlots(t.size, plan, 4).length === 4);
 }
 
 console.log('\n=== 24. Shell integrity ===');
@@ -731,6 +735,13 @@ console.log('\n=== 24. Shell integrity ===');
   ok('app code is served network-first so a redeploy is visible',
      /sameOrigin/.test(sw) && sw.indexOf('fetch(e.request)') < sw.indexOf('caches.match(e.request)'));
   ok('the running build is stamped in the UI', /id="build"/.test(html));
+  ok('the HUD stamp is the short form', /^V\d+$/.test(BUILD_LABEL),
+     `(${BUILD} → ${BUILD_LABEL})`);
+  ok('and it matches the full build number',
+     BUILD_LABEL.slice(1) === BUILD.match(/^v(\d+)/)[1]);
+  ok('sw.js and controls.js agree on the build',
+     new RegExp(`BUILD = '${BUILD}'`).test(sw),
+     '(a mismatch means the HUD lies about what is cached)');
   ok('the worker is asked to update on load', /reg\.update\(\)/.test(html));
   ok('the canvas disables browser touch gestures', /touch-action:\s*none/.test(html));
   ok('reduced motion is respected', /prefers-reduced-motion/.test(html));
@@ -982,9 +993,16 @@ console.log('\n=== 33. The chancel faces the people ===');
      c.pulpitFace.z > c.pulpit.z,
      '(a face on the far side aims the gold at the back wall)');
   ok('the preacher stands behind the pulpit, looking out',
-     c.preacher.z < c.pulpit.z && c.preacher.facing === plan.facing);
-  ok('the preacher and the congregation face each other',
-     c.preacher.facing === -1 && plan.facing === -1);
+     c.preacher.z < c.pulpit.z && c.preacher.facing === -plan.facing,
+     '(behind it in z, and turned toward the people)');
+  ok('the preacher and the congregation face EACH OTHER',
+     c.preacher.facing === -plan.facing,
+     '(this assertion used to check they faced the SAME way and still pass)');
+  ok('everything on the chancel shares one facing',
+     c.facesCongregation === c.preacher.facing &&
+     c.facesCongregation === c.chair.facing,
+     '(one value, so a new chancel prop cannot get it wrong)');
+  ok('and it is the opposite of the pews', c.facesCongregation === -plan.facing);
   ok('the communion table sits between pulpit and pews',
      c.table.z > c.pulpit.z && c.table.z < plan.benches[0].z);
   ok('the platform stays inside the room', c.platformFront < size.d / 2);
@@ -997,9 +1015,11 @@ console.log('\n=== 34. Seating in the pews ===');
   const plan = pewLayout(t.size);
   const slots = seatSlots(t.size, plan, 40);
 
-  ok('the geometry can seat everyone the rules promise',
-     slots.length >= (s.rooms[0].seats ?? 16),
-     `(${slots.length} slots for ${s.rooms[0].seats} seats)`);
+  // Capping BELOW the geometry strands a lone person on the back
+  // bench; capping ABOVE it leaves people with nowhere to render.
+  ok('the seat count matches the pews exactly',
+     slots.length === s.rooms[0].seats,
+     `(${slots.length} slots vs ${s.rooms[0].seats} seats)`);
   ok('every seat faces the chancel', slots.every((x) => x.facing === plan.facing));
   ok('seats stay inside the room',
      slots.every((x) => Math.abs(x.x) <= t.size.w / 2 && Math.abs(x.z) <= t.size.d / 2));
@@ -2095,7 +2115,11 @@ console.log('\n=== 71. Where he stands ===');
      Math.abs(seated.x - chancel.chair.x) < 1e-9 && seated.action === 'sit');
   ok('the chair is on the platform, off to one side',
      Math.abs(chancel.chair.x) > 0.5 && chancel.chair.z <= chancel.platform.z + 0.01);
-  ok('and it faces the people', chancel.chair.facing === plan.facing);
+  ok('and it faces the people, not the wall',
+     chancel.chair.facing === -plan.facing,
+     '(copying plan.facing puts the pastor\'s back to the pews)');
+  ok('his backrest is behind him, toward the wall',
+     chancel.chair.z - chancel.chair.facing * (chancel.chair.d / 2) < chancel.chair.z);
 
   advancePastor(s, t, { serviceActive: true });
   t += PASTOR.RISE_MS / 2;
@@ -2355,6 +2379,235 @@ console.log('\n=== 77. Actually moving the sanctuary ===');
   ok('and the church is still walkable', paths.allReachable(s));
   ok('the front door still reaches the sanctuary',
      paths.toRoom(s, 'sanctuary') !== null);
+}
+
+console.log('\n=== 78. The pastor always faces the people ===');
+{
+  const s = fullChurch(TUESDAY_8AM);
+  ensurePastor(s, 'p-face');
+  const t0 = roomTransform(s, s.rooms.find((r) => r.id === 'sanctuary'));
+  const plan = pewLayout(t0.size);
+  const chancel = chancelLayout(t0.size, plan);
+  let t = TUESDAY_8AM;
+
+  // Every phase, without exception.
+  const phases = [];
+  const record = () => phases.push({ phase: s.pastor.phase, pose: pastorPose(s, chancel, t) });
+
+  record();                                          // seated
+  advancePastor(s, t, { serviceActive: true }); record();   // rising
+  t += PASTOR.RISE_MS + 1;
+  advancePastor(s, t, { serviceActive: true }); record();   // preaching
+  advancePastor(s, t, { serviceActive: false }); record();  // dismissing
+  t += PASTOR.DISMISS_MS + 1;
+  advancePastor(s, t, { serviceActive: false }); record();  // waving
+  t += PASTOR.WAVE_MS + 1;
+  advancePastor(s, t, { serviceActive: false }); record();  // returning
+
+  ok('he never turns his back on the pews, in any phase',
+     phases.every((p) => p.pose.facing === -plan.facing),
+     `(${phases.map((p) => `${p.phase}:${p.pose.facing}`).join(' ')})`);
+  ok('every phase was covered', phases.length === 6);
+
+  // And the congregation is looking back at him.
+  const slots = seatSlots(t0.size, plan, 8);
+  ok('the congregation looks the other way', slots.every((x) => x.facing === plan.facing));
+  ok('so pastor and people are face to face',
+     phases[0].pose.facing === -slots[0].facing);
+}
+
+console.log('\n=== 79. A full house fills every bench ===');
+{
+  const s = newState(TUESDAY_8AM);
+  const room = s.rooms.find((r) => r.id === 'sanctuary');
+  const t = roomTransform(s, room);
+  const plan = pewLayout(t.size);
+  const slots = allSeatSlots(t.size, plan, { pews: room.seats });
+
+  ok('every bench holds the same number', (() => {
+    const per = {};
+    for (const x of slots) {
+      const key = `${x.z.toFixed(2)}|${x.side}`;
+      per[key] = (per[key] || 0) + 1;
+    }
+    return new Set(Object.values(per)).size === 1;
+  })(), '(3 rows x 2 benches x 3 seats)');
+
+  ok('a full house leaves nobody sitting alone', (() => {
+    const per = {};
+    for (let i = 0; i < room.seats; i++) {
+      const x = slots[i];
+      const key = `${x.z.toFixed(2)}|${x.side}`;
+      per[key] = (per[key] || 0) + 1;
+    }
+    const counts = Object.values(per);
+    return counts.length === 6 && counts.every((c) => c === counts[0]);
+  })(), '(16 into 18 slots left one person on the back-right bench)');
+
+  ok('the back row is used', slots.some((x) => x.z === plan.benches[4].z));
+}
+
+console.log('\n=== 80. Folding chairs get seats too ===');
+{
+  const s = newState(TUESDAY_8AM);
+  const room = s.rooms.find((r) => r.id === 'sanctuary');
+  const t = roomTransform(s, room);
+  const plan = pewLayout(t.size);
+
+  const pewsOnly = allSeatSlots(t.size, plan, { pews: room.seats });
+  const withChairs = allSeatSlots(t.size, plan, { pews: room.seats, tempSeats: 8 });
+
+  ok('chairs add places to sit', withChairs.length === pewsOnly.length + 8,
+     `(${pewsOnly.length} → ${withChairs.length})`);
+  ok('the pews keep their indices', (() => {
+    return withChairs.slice(0, pewsOnly.length)
+      .every((x, i) => x.x === pewsOnly[i].x && x.z === pewsOnly[i].z);
+  })(), '(so nobody is shuffled when chairs come out)');
+
+  const chairs = withChairs.slice(pewsOnly.length);
+  ok('chair seats sit beside the pews, in the side margins',
+     chairs.every((c) => Math.abs(c.x) > t.size.w / 2 - plan.sideMargin - 1e-9));
+  ok('and face the pulpit like everyone else',
+     chairs.every((c) => c.facing === plan.facing));
+  ok('they are marked as chairs', chairs.every((c) => c.chair === true));
+
+  // The whole point: capacity and renderable seats must agree.
+  s.sanctuary.tempSeats = 8;
+  ok('there is a seat for everyone capacity allows',
+     withChairs.length >= seatCapacity(s),
+     `(${withChairs.length} slots for capacity ${seatCapacity(s)})`);
+}
+
+console.log('\n=== 81. Calling for the chairs ===');
+{
+  // deployFoldingChairs() and chairStatus() were written and tested
+  // in step 1 but nothing outside the module ever called them —
+  // the deacons had never once been asked. This covers the states
+  // the prompt has to render.
+  const s = fullChurch(TUESDAY_8AM);
+  clearSeats(s);
+  s.currency.offering = 5000;
+  s.sanctuary.vestibule = 0;
+  s.sanctuary.chairsReadyAt = 0;
+
+  ok('an empty sanctuary is not offered chairs',
+     chairStatus(s, TUESDAY_8AM).reason === 'not_needed',
+     '(the prompt would be noise)');
+
+  for (let i = 0; i < 18; i++) seatPerson(s, { isStranger: false });
+  s.sanctuary.vestibule = 7;
+  const ready = chairStatus(s, TUESDAY_8AM);
+  ok('a full house with people waiting is offered chairs', ready.canDeploy);
+  ok('the offer says how many and what it costs',
+     ready.count > 0 && ready.cost > 0, `(${ready.count} for ${ready.cost})`);
+  ok('and how many are waiting outside', ready.waiting === 7);
+
+  const before = s.currency.offering;
+  const res = deployFoldingChairs(s, TUESDAY_8AM);
+  ok('the deacons bring them out', res.ok);
+  ok('it is paid for', s.currency.offering === before - ready.cost);
+  ok('people come in from the vestibule', res.seated > 0, `(${res.seated} seated)`);
+  ok('the vestibule drains by that many', s.sanctuary.vestibule === 7 - res.seated);
+
+  const out = chairStatus(s, TUESDAY_8AM);
+  ok('a second call is refused while they are out', out.reason === 'already_out');
+
+  // After a service the chairs are stored and go on cooldown.
+  startService(s, 'come_unto_me', TUESDAY_8AM);
+  finishService(s, TUESDAY_8AM + 180000, { gradual: true });
+  const cooling = chairStatus(s, TUESDAY_8AM + 180000);
+  ok('afterwards they are on cooldown', cooling.reason === 'cooldown');
+  ok('and the prompt can say how long', cooling.cooldownRemainingMs > 0);
+
+  const later = chairStatus(s, TUESDAY_8AM + 9 * H);
+  ok('later they can be brought out again', later.reason !== 'cooldown');
+
+  const broke = { ...s, currency: { ...s.currency, offering: 0 } };
+  broke.sanctuary = { ...s.sanctuary, tempSeats: 0, chairsReadyAt: 0, vestibule: 5 };
+  ok('with no offering the prompt says so',
+     chairStatus(broke, TUESDAY_8AM + 9 * H).reason === 'cannot_afford');
+}
+
+console.log('\n=== 82. Everything designed is reachable ===');
+{
+  // Three capabilities were built, tested, and left with no way in:
+  // moveRoom, deployFoldingChairs, and holdPrayerMeeting. Tests
+  // call core functions directly and never ask whether the UI does,
+  // so this checks the wiring itself.
+  const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+
+  const wired = (fn) => new RegExp(`\\b${fn}\\s*\\(`).test(main);
+
+  const mustBeCalled = [
+    'holdPrayerMeeting', 'deployFoldingChairs', 'moveRoom',
+    'cancelConstruction', 'startConstruction', 'unlockSermon',
+    'startService', 'finishService', 'foundMinistry', 'setSchedule',
+  ];
+  for (const fn of mustBeCalled) {
+    ok(`${fn}() is actually called from main.js`, wired(fn));
+  }
+
+  // And each one needs a control the player can press.
+  const controls = ['prayer-go', 'chairs-go', 'openArrange', 'openBuild',
+                    'openMinistries', 'svc-start', 'reopenAway'];
+  for (const id of controls) {
+    ok(`there is a control for #${id}`,
+       html.includes(`id="${id}"`) && main.includes(`'${id}'`));
+  }
+
+  // No dead imports: anything main.js pulls in must be used.
+  const imports = [...main.matchAll(/import\s*\{([^}]+)\}\s*from/gs)]
+    .flatMap((m) => m[1].split(',').map((n) => n.trim().split(' as ').pop().trim()))
+    .filter(Boolean);
+  const body = main.replace(/import\s*\{[^}]+\}\s*from[^\n]+\n/gs, '');
+  const dead = imports.filter((n) => !new RegExp(`\\b${n}\\b`).test(body));
+  ok('main.js has no dead imports', dead.length === 0, `(${dead.join(', ')})`);
+}
+
+console.log('\n=== 83. The prayer meeting releases the queue ===');
+{
+  const s = fullChurch(TUESDAY_8AM);
+  const sys = new VisitorSystem(s, new PathCache().warm(s), 'p-pray2');
+  s.queue = [];
+
+  // Someone waiting by the prayer room door.
+  const v = sys.spawnOne(TUESDAY_8AM);
+  v.needId = 'counseling';
+  v.phase = 'queued';
+  s.queue.push({ needId: 'counseling', arrivedAt: TUESDAY_8AM, visitorId: v.id });
+
+  const res = holdPrayerMeeting(s, TUESDAY_8AM);
+  ok('the meeting serves the queue', res.ok && res.served === 1);
+  ok('and the queue empties', s.queue.length === 0);
+
+  const released = sys.concludePrayer(TUESDAY_8AM);
+  ok('the waiting visitor is released', released === 1 && v.phase === 'leaving',
+     '(without this they wait by the door forever)');
+
+  let t = TUESDAY_8AM;
+  for (let i = 0; i < 60 * 30; i++) { sys.update(1 / 30, t); t += 1000 / 30; }
+  ok('and they leave the church', !sys.visitors.some((x) => x.id === v.id));
+}
+
+console.log('\n=== 84. A build can be called off ===');
+{
+  const s = newState(TUESDAY_8AM);
+  s.level = 10;
+  s.currency.offering = 5000;
+  const spot = suggestPlacement(s, 'fellowship_hall', 0);
+  const before = s.currency.offering;
+
+  startConstruction(s, 'fellowship_hall', spot.x, spot.y, 0, TUESDAY_8AM);
+  ok('a site exists to cancel', s.construction.length === 1);
+
+  const res = cancelConstruction(s, 'fellowship_hall');
+  ok('it can be called off', res.ok);
+  ok('with a full refund', s.currency.offering === before,
+     '(nothing is gained by punishing a change of mind)');
+  ok('and the site is gone', s.construction.length === 0);
+  ok('the room can then be built somewhere else',
+     startConstruction(s, 'fellowship_hall', spot.x, spot.y, 0, TUESDAY_8AM).ok);
 }
 
 console.log(`\n${'='.repeat(46)}\n  ${pass} passed, ${fail} failed\n${'='.repeat(46)}\n`);

@@ -25,7 +25,7 @@ python3 -m http.server 8000
 # then open http://localhost:8000
 ```
 
-**Tests** (546 assertions, no browser required):
+**Tests** (607 assertions, no browser required):
 
 ```bash
 node test/offline.test.js
@@ -59,6 +59,9 @@ node test/offline.test.js
 - Furnished rooms — a kitchen with a cook line and fellowship tables, clothing
   rails, a prayer altar and kneeler, a baptismal pool with water
 - An Arrange mode for repositioning built rooms
+- A prompt to call the deacons for folding chairs when the house is full
+- A prompt to hold the batch prayer meeting when a queue has formed
+- Cancelling a build in progress, for a full refund
 - A pastor who sits on the platform, rises to the pulpit for service, gives the
   benediction, sees the people out, and sits back down
 
@@ -121,9 +124,10 @@ success. Never write a raw fetch to Supabase anywhere else.
 views get killed by the OS without warning. This is the single most important
 line in the project.
 
-**Bump `BUILD` in `sw.js` AND in `src/data/controls.js` on every deploy.** The
-value from `controls.js` is shown in the HUD, so you can always confirm which
-build the browser is actually running. The module list in `sw.js` is maintained by
+**Bump `BUILD` in `sw.js` AND in `src/data/controls.js` on every deploy** — the
+two must match, and a test checks it. The HUD shows the short form (`V20`) derived
+from that value, so you can confirm at a glance which build the browser is running
+without a date cluttering the screen. The module list in `sw.js` is maintained by
 hand — add a file to `src/` and you must add it there too. A test checks this, but
 only if you run it.
 
@@ -167,6 +171,25 @@ offline resolver agree without sharing code paths.
 **Titles are applied through `displayName()`.** Names that already carry their
 title are left alone — blind prefixing produced "Mother Mother Hayes", and the
 converted stranger would have hit the same thing.
+
+**Tests calling a core function do not prove the player can reach it.** Three
+capabilities — `moveRoom`, `deployFoldingChairs`, `holdPrayerMeeting` — were
+written, fully tested, and left with no way in. Test 82 now asserts that the
+functions a player must be able to trigger are actually called from `main.js`,
+that each has a control in `index.html`, and that `main.js` has no dead imports.
+Add a player-facing capability, add it to that list.
+
+**Seat capacity must equal the geometry, exactly.** The pews hold 3 rows x 2
+benches x 3 seats = 18. Capping the rules below that stranded one person alone on
+the back bench; capping above it would leave people with nowhere to render. And
+`seatCapacity()` counts pews plus folding chairs, so the renderer reads
+`allSeatSlots()` — pews first, then chairs — or everyone on a chair is invisible.
+
+**Orientation runs both ways, and the chancel is the opposite of the pews.**
+The congregation faces the chancel; everyone standing on it — preacher, pastor,
+his chair — faces back at the people. `chancelLayout()` exposes a single
+`facesCongregation` value so a new chancel prop cannot get it wrong by copying
+`plan.facing`. That copy is exactly what put the pastor's back to the pews.
 
 **The sanctuary can be moved, except during a service.** It is a room like any
 other and `repath()` keeps everyone routed when it goes. Moving it mid-service is

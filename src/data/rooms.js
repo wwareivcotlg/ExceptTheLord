@@ -18,7 +18,12 @@ export const ROOMS = [
     door: [2, 7], doorFacing: 's',
     cost: { offering: 0 },        // starting room
     buildS: 0,
-    baseSeats: 16,
+    // MUST match what pewLayout/seatSlots actually produce:
+    // 3 rows x 2 benches x 3 seats. Capping below the geometry
+    // leaves a lone straggler on the back bench; capping above it
+    // means people with nowhere to render. A test asserts the two
+    // agree, so change this only alongside the pew layout.
+    baseSeats: 18,
   },
   {
     id: 'fellowship_hall',

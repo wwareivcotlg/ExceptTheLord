@@ -9,7 +9,7 @@ import * as THREE from 'three';
 import { FigurePool, buildFigure } from './characters.js';
 import { createBubble, setBubbleState, createPayoutPopup, stepPopup,
          createNameplate } from './bubble.js';
-import { tileToWorld, roomTransform, pewLayout, seatSlots, localToWorld,
+import { tileToWorld, roomTransform, pewLayout, allSeatSlots, localToWorld,
          seatedPose } from './layout.js';
 import { projectPoint } from './picking.js';
 import { castCongregant } from '../core/casting.js';
@@ -67,14 +67,22 @@ export function createCrowd(sceneApi, state, visitors, playerId = 'local', onEve
   }
 
   // Pew seats, computed once. Rebuilt only if the sanctuary moves.
+  // Recomputed when the sanctuary moves OR when folding chairs go
+  // out and come back — chairs add seats, and a stale list leaves
+  // whoever is on them invisible.
   let seating = null;
   function seats() {
-    if (seating) return seating;
     const room = state.rooms.find((r) => r.id === 'sanctuary');
     if (!room) return null;
+    const tempSeats = state.sanctuary.tempSeats || 0;
+    if (seating && seating.tempSeats === tempSeats) return seating;
     const t = roomTransform(state, room);
     const plan = pewLayout(t.size);
-    seating = { transform: t, slots: seatSlots(t.size, plan, 40) };
+    seating = {
+      transform: t,
+      tempSeats,
+      slots: allSeatSlots(t.size, plan, { pews: room.seats ?? 18, tempSeats }),
+    };
     return seating;
   }
 

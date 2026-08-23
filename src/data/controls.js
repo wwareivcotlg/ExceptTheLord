@@ -1,6 +1,14 @@
-// Bump this on every deploy. It is shown in the HUD so you can
-// always tell which build is actually running in the browser.
-export const BUILD = 'v19-2026-08-23';
+// Bump this on every deploy. It must match BUILD in sw.js.
+export const BUILD = 'v23-2026-08-23';
+
+/**
+ * Short form for the HUD: "V20".
+ *
+ * The full stamp stays in BUILD for the service worker and for
+ * bug reports; the screen only needs enough to tell one build from
+ * the next at a glance.
+ */
+export const BUILD_LABEL = `V${(BUILD.match(/^v(\d+)/i) || [, '?'])[1]}`;
 
 // ============================================================
 // CONTROLS — how the camera and taps feel. Safe to edit.

@@ -221,6 +221,33 @@
   #service .why { font-size: .68rem; opacity: .68; letter-spacing: .02em; }
   #service .row { display: flex; gap: .45rem; margin-top: .35rem; }
 
+  /* --- Folding chairs --- */
+  #prayer {
+    position: fixed; left: 50%; bottom: 12.6rem; z-index: 13;
+    transform: translateX(-50%) translateY(.6rem);
+    display: none; align-items: center; gap: .6rem;
+    padding: .55rem .7rem .55rem .9rem; border-radius: 999px;
+    background: rgba(36,31,92,.94); border: 1px solid rgba(201,191,245,.45);
+    opacity: 0; transition: opacity .3s, transform .3s;
+    max-width: 92vw;
+  }
+  #prayer.on { display: flex; opacity: 1; transform: translateX(-50%) translateY(0); }
+  #prayer .waiting { font-size: .72rem; opacity: .85; white-space: nowrap; }
+  #prayer button { font-size: .68rem; padding: .4rem .7rem; }
+
+  #chairs {
+    position: fixed; left: 50%; bottom: 9.4rem; z-index: 13;
+    transform: translateX(-50%) translateY(.6rem);
+    display: none; align-items: center; gap: .6rem;
+    padding: .55rem .7rem .55rem .9rem; border-radius: 999px;
+    background: rgba(36,31,92,.94); border: 1px solid rgba(184,122,0,.45);
+    opacity: 0; transition: opacity .3s, transform .3s;
+    max-width: 92vw;
+  }
+  #chairs.on { display: flex; opacity: 1; transform: translateX(-50%) translateY(0); }
+  #chairs .waiting { font-size: .72rem; opacity: .85; white-space: nowrap; }
+  #chairs button { font-size: .68rem; padding: .4rem .7rem; }
+
   /* --- Sermon sheet --- */
   .sermon { display: block; }
   .sermon .verse {
@@ -316,6 +343,16 @@
       <button id="svc-start" type="button" class="primary">Begin service</button>
       <button id="svc-pick" type="button">Choose sermon</button>
     </div>
+  </div>
+
+  <div id="prayer">
+    <span class="waiting" id="prayer-waiting">—</span>
+    <button id="prayer-go" type="button" class="primary">Hold prayer meeting</button>
+  </div>
+
+  <div id="chairs">
+    <span class="waiting" id="chairs-waiting">—</span>
+    <button id="chairs-go" type="button" class="primary">Bring out chairs</button>
   </div>
 
   <div id="away">

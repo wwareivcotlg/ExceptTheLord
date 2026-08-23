@@ -383,6 +383,23 @@ export class VisitorSystem {
     v.phase = 'leaving';
   }
 
+  /**
+   * The Elder has prayed with everyone waiting. Release them.
+   *
+   * holdPrayerMeeting() empties state.queue, but live visitors in
+   * the 'queued' phase are separate objects — without this they
+   * would wait by the prayer room door forever.
+   */
+  concludePrayer(atMs) {
+    const released = [];
+    for (const v of [...this.visitors]) {
+      if (v.phase !== 'queued') continue;
+      this.#leave(v);
+      released.push(v.id);
+    }
+    return released.length;
+  }
+
   /** Whether a tap on this visitor would do anything. */
   isTappable(v) {
     return v.phase === 'waiting' && canServe(this.state, v.needId).ok;

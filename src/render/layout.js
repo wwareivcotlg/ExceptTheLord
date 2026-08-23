@@ -127,26 +127,35 @@ export function pewLayout(
  * The chancel end: platform, pulpit, communion table, and where a
  * preacher stands.
  *
- * ORIENTATION IS THE WHOLE POINT. The congregation sits toward +z
- * and the chancel is at -z, so:
- *   - the preacher stands BEHIND the pulpit (more negative z)
- *   - the pulpit's decorated face points at the congregation (+z)
- * Getting the facing panel on the wrong side puts the gold on the
- * back of the podium, aimed at the wall.
+ * ORIENTATION IS THE WHOLE POINT, and it runs BOTH WAYS.
+ *
+ * The congregation sits toward +z looking at the chancel (-z).
+ * Everyone ON the chancel — the preacher at the pulpit, the pastor
+ * in his chair — looks the OTHER way, back at the people. Their
+ * facing is the opposite sign of the congregation's, never the
+ * same. Copying `plan.facing` onto the chancel is what turns the
+ * pastor's back to the pews.
+ *
+ * Also: the preacher stands BEHIND the pulpit (more negative z),
+ * and the pulpit's decorated face points at the people (+z).
  */
 export function chancelLayout(size, plan, { platformDepth = 2.2 } = {}) {
   const platformZ = -size.d / 2 + 1.5;
   const pulpitZ = plan.chancelZ;
   const towardCongregation = -plan.facing;   // +1
+  // One value, used by everything that stands on the chancel.
+  const facesCongregation = towardCongregation;
 
   return {
+    facesCongregation,
     platform: { x: 0, z: platformZ, w: size.w - 0.6, d: platformDepth, h: 0.22 },
     platformFront: platformZ + platformDepth / 2,
     pulpit: { x: 0, z: pulpitZ, w: 1.0, h: 0.95, d: 0.55 },
     // Decorated face, offset toward the people.
     pulpitFace: { x: 0, z: pulpitZ + towardCongregation * 0.29, w: 0.62, h: 0.34 },
-    // Where the preacher stands: behind it, looking out.
-    preacher: { x: 0, z: pulpitZ - towardCongregation * 0.55, facing: plan.facing },
+    // Where the preacher stands: behind the pulpit, looking OUT at
+    // the people — the opposite way from the congregation.
+    preacher: { x: 0, z: pulpitZ - towardCongregation * 0.55, facing: facesCongregation },
     table: { x: 0, z: -size.d / 2 + 3.0, w: 1.6, d: 0.6, h: 0.5 },
     // The pastor's chair, set to one side of the platform and
     // facing the people — he watches the service from here.
@@ -155,7 +164,9 @@ export function chancelLayout(size, plan, { platformDepth = 2.2 } = {}) {
       z: platformZ,
       w: 0.7, d: 0.6, h: 0.9,
       seatY: 0.22 + 0.36,          // platform top + seat height
-      facing: plan.facing,
+      // He watches the service FROM here, so he faces the people —
+      // not the same way they do.
+      facing: facesCongregation,
     },
     towardCongregation,
   };
@@ -233,14 +244,37 @@ export function seatedPose(legHeight, facing = -1, seatTop = SEAT_TOP_Y) {
  * Where folding chairs stand when the deacons bring them out —
  * the side margins pewLayout reserved, one chair per row per side.
  */
-export function chairSlots(size, plan, count) {
+export function chairSlots(size, plan, count, { chairPitch = 0.55 } = {}) {
   const x = size.w / 2 - plan.sideMargin / 2;
   const slots = [];
-  for (let i = 0; i < plan.rows && slots.length < count; i++) {
-    const z = -size.d / 2 + 3.2 + i * plan.rowGap ?? 0;
-    const rowZ = plan.benches[i * 2]?.z ?? z;
-    slots.push({ x: -x, z: rowZ, side: 'left' });
-    if (slots.length < count) slots.push({ x, z: rowZ, side: 'right' });
+
+  // Chairs run the length of the side margin, not one per pew row.
+  // Tying them to rows capped the aisles at six chairs, while the
+  // Trustee Board can put out ten.
+  const zStart = plan.benches[0].z;
+  const zEnd = size.d / 2 - 0.8;
+  const perSide = Math.max(1, Math.floor((zEnd - zStart) / chairPitch) + 1);
+
+  for (let i = 0; i < perSide && slots.length < count; i++) {
+    const z = zStart + i * chairPitch;
+    slots.push({ x: -x, z, side: 'left', facing: plan.facing, chair: true });
+    if (slots.length < count) {
+      slots.push({ x, z, side: 'right', facing: plan.facing, chair: true });
+    }
   }
   return slots;
+}
+
+/**
+ * Every place a person can sit right now: the pews first, then any
+ * folding chairs the deacons have set out.
+ *
+ * seatCapacity() counts pews PLUS folding chairs, so a renderer
+ * that only knows about pews leaves everyone on a chair invisible.
+ * One list, in the same order seats are claimed.
+ */
+export function allSeatSlots(size, plan, { pews, tempSeats = 0 } = {}) {
+  const seats = seatSlots(size, plan, pews);
+  if (tempSeats > 0) seats.push(...chairSlots(size, plan, tempSeats));
+  return seats;
 }
