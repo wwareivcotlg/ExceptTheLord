@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { PALETTE } from './palette.js';
 import { ROOM_BY_ID } from '../data/rooms.js';
 import { roomTransform, tileToWorld, floorExtent, pewLayout, chancelLayout, TILE } from './layout.js';
+import { buildInterior } from './interiors.js';
 
 const WALL_H = 1.25;
 const WALL_T = 0.12;
@@ -171,6 +172,7 @@ function buildRoom(state, room) {
   group.add(doorMark);
 
   if (room.id === 'sanctuary') buildSanctuaryInterior(group, t.size, room);
+  else buildInterior(group, room.id, t.size);
 
   group.userData = { roomId: room.id, transform: t, def };
   return group;

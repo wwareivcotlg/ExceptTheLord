@@ -92,6 +92,13 @@ export function grantRehearsalBuff(state, atMs) {
   return { ...def.grantsBuff };
 }
 
+/** Drop buffs whose time has run out. */
+export function pruneBuffs(state, atMs) {
+  const before = (state.buffs || []).length;
+  state.buffs = (state.buffs || []).filter((b) => !b.expiresAt || atMs <= b.expiresAt);
+  return before - state.buffs.length;
+}
+
 /** Is a rehearsal buff currently banked? */
 export function pendingRehearsal(state) {
   return (state.buffs || []).find((b) => b.consumeOnService) || null;

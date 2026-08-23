@@ -140,6 +140,35 @@ export function setBubbleState(sprite, serveable) {
   sprite.material.needsUpdate = true;
 }
 
+/** A small name label that follows a named character. */
+export function createNameplate(text) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512; canvas.height = 96;
+  const c = canvas.getContext('2d');
+  c.font = '600 40px Archivo, system-ui, sans-serif';
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+
+  const w = Math.min(480, c.measureText(text).width + 44);
+  c.fillStyle = 'rgba(36,31,92,.88)';
+  roundRect(c, (512 - w) / 2, 20, w, 56, 28);
+  c.fill();
+  c.strokeStyle = '#B87A00';
+  c.lineWidth = 3;
+  roundRect(c, (512 - w) / 2, 20, w, 56, 28);
+  c.stroke();
+
+  c.fillStyle = '#EFE7D8';
+  c.fillText(text, 256, 49);
+
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(canvas), transparent: true, depthTest: false,
+  }));
+  sprite.scale.set(1.5, 0.28, 1);
+  sprite.renderOrder = 11;
+  return sprite;
+}
+
 /** Floating "+12" that rises and fades when a need is met. */
 export function createPayoutPopup(text, color = PALETTE.gold) {
   const canvas = document.createElement('canvas');

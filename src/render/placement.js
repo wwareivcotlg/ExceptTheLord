@@ -13,7 +13,7 @@ import { ROOM_BY_ID } from '../data/rooms.js';
 import { tileToWorld, TILE } from './layout.js';
 import { rotatedSize, doorAndApproach, gridSize } from '../core/grid.js';
 import { validatePlacement } from '../core/grid.js';
-import { canMoveTo, suggestPlacement } from '../core/build.js';
+import { canMoveTo, suggestPlacement, canPickUp } from '../core/build.js';
 
 const GHOST_H = 1.25;
 
@@ -65,9 +65,13 @@ export function createPlacementTool(sceneApi, state, { onChange } = {}) {
 
   function check() {
     if (!session) return { valid: false };
-    return session.mode === 'move'
-      ? canMoveTo(state, session.roomId, session.x, session.y, session.rot)
-      : validatePlacement(state, session.roomId, session.x, session.y, session.rot);
+    if (session.mode === 'move') {
+      // A service can begin while the ghost is already up.
+      const pickup = canPickUp(state, session.roomId);
+      if (!pickup.ok) return { valid: false, reason: pickup.reason };
+      return canMoveTo(state, session.roomId, session.x, session.y, session.rot);
+    }
+    return validatePlacement(state, session.roomId, session.x, session.y, session.rot);
   }
 
   function redraw() {

@@ -148,6 +148,15 @@ export function chancelLayout(size, plan, { platformDepth = 2.2 } = {}) {
     // Where the preacher stands: behind it, looking out.
     preacher: { x: 0, z: pulpitZ - towardCongregation * 0.55, facing: plan.facing },
     table: { x: 0, z: -size.d / 2 + 3.0, w: 1.6, d: 0.6, h: 0.5 },
+    // The pastor's chair, set to one side of the platform and
+    // facing the people — he watches the service from here.
+    chair: {
+      x: -(size.w / 2) + 1.1,
+      z: platformZ,
+      w: 0.7, d: 0.6, h: 0.9,
+      seatY: 0.22 + 0.36,          // platform top + seat height
+      facing: plan.facing,
+    },
     towardCongregation,
   };
 }

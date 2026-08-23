@@ -89,7 +89,7 @@
   .founded .price { color: var(--gold-light); }
 
   /* --- Build sheet --- */
-  #sheet, #sermonSheet, #ministrySheet {
+  #sheet, #sermonSheet, #ministrySheet, #arrangeSheet {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 15;
     max-height: 62dvh; overflow-y: auto;
     padding: .9rem .9rem max(1.1rem, env(safe-area-inset-bottom));
@@ -99,8 +99,8 @@
     transform: translateY(101%);
     transition: transform .28s cubic-bezier(.2,.8,.3,1);
   }
-  #sheet.open, #sermonSheet.open, #ministrySheet.open { transform: translateY(0); }
-  #sheet h2, #sermonSheet h2, #ministrySheet h2 {
+  #sheet.open, #sermonSheet.open, #ministrySheet.open, #arrangeSheet.open { transform: translateY(0); }
+  #sheet h2, #sermonSheet h2, #ministrySheet h2, #arrangeSheet h2 {
     margin: 0 0 .7rem; font-family: Fraunces, Georgia, serif;
     font-size: 1.05rem; font-weight: 600; letter-spacing: -.01em;
   }
@@ -297,6 +297,7 @@
     <span id="build" title="Running build">—</span>
     <button id="openBuild" type="button">Build</button>
     <button id="openMinistries" type="button">Ministries</button>
+    <button id="openArrange" type="button">Arrange</button>
     <button id="reopenAway" type="button" title="While you were away">Away</button>
     <button id="turn" type="button">Turn</button>
     <button id="recenter" type="button">Recenter</button>
@@ -342,6 +343,15 @@
     </fieldset>
     <p id="welcome-note" style="min-height:1.2em"></p>
     <button id="welcome-go" type="button" class="primary">Open the doors</button>
+  </div>
+
+  <div id="arrangeSheet">
+    <h2>Arrange the church</h2>
+    <p style="margin:0 0 .7rem;font-size:.74rem;opacity:.7">
+      Pick a room to move. Costs offering, never favor.
+    </p>
+    <div id="arrangeList"></div>
+    <button id="closeArrange" type="button">Close</button>
   </div>
 
   <div id="ministrySheet">

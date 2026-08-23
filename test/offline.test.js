@@ -37,6 +37,17 @@ import { todayEvent, nextSpecialDay, grantRehearsalBuff, pendingRehearsal,
          getSchedule, dayKey } from '../src/core/rhythm.js';
 import { buildAwayReport, shouldShowAway, isNotable, pushAwayHistory,
          awayHistory, headlineFor, soulsServed } from '../src/core/away.js';
+import { dueCharacters, makeArrival, markArrived, onServed, arcProgress,
+         characterState, displayName, needForVisit } from '../src/core/characters.js';
+import { CHARACTER_BY_ID } from '../src/data/characters.js';
+import { pruneBuffs } from '../src/core/rhythm.js';
+import { refillStep } from '../src/core/sanctuary.js';
+import { ensurePastor, advancePastor, pastorPose, phaseProgress,
+         pastorBusy, PHASES } from '../src/core/pastor.js';
+import { PASTOR } from '../src/data/characters.js';
+import { FURNITURE, unfurnished } from '../src/data/furniture.js';
+import { ROOMS } from '../src/data/rooms.js';
+import { moveCost, canMoveTo, canPickUp, MOVE_REASONS } from '../src/core/build.js';
 import { resolveOffline } from '../src/core/offline.js';
 import { holdPrayerMeeting, queueCapacity } from '../src/core/prayer.js';
 import { castCongregant, castRole, congregationWeights, hairFor, bespokeAssets,
@@ -708,9 +719,9 @@ console.log('\n=== 24. Shell integrity ===');
     'sim/pathfinding',
     'render/scene', 'render/camera', 'render/church', 'render/layout', 'render/palette',
     'render/characters', 'render/bubble', 'render/crowd', 'render/picking',
-    'render/placement', 'render/sites',
+    'render/placement', 'render/sites', 'render/pastor', 'render/interiors',
     'data/tuning', 'data/needs', 'data/rooms', 'data/ministries',
-    'data/schedule', 'data/casting', 'data/controls', 'data/sermons', 'data/ranks',
+    'data/schedule', 'data/casting', 'data/controls', 'data/sermons', 'data/ranks', 'data/characters', 'data/furniture',
   ];
   const missing = modules.filter((m) => !sw.includes(`${m}.js`));
   ok('the service worker caches every module', missing.length === 0,
@@ -1079,8 +1090,8 @@ console.log('\n=== 37. Moving a room ===');
   const s = fullChurch(TUESDAY_8AM);
   s.currency.offering = 5000;
 
-  ok('the sanctuary cannot be moved',
-     moveRoom(s, 'sanctuary', 0, 0, 0).ok === false);
+  ok('the sanctuary can be picked up when nothing is happening',
+     canPickUp(s, 'sanctuary').ok === true);
 
   const before = s.currency.offering;
   const bad = moveRoom(s, 'fellowship_hall', 4, 0, 0);   // onto the sanctuary
@@ -1754,6 +1765,596 @@ console.log('\n=== 59. The pews reflect state, not the live list ===');
 
   ok('overflow waits in the vestibule, not on the threshold',
      s.sanctuary.vestibule > 0, `(${s.sanctuary.vestibule} waiting)`);
+}
+
+console.log('\n=== 60. The people who come back ===');
+{
+  const SUN = new Date(2026, 7, 23, 10, 0, 0).getTime();
+  const MON = new Date(2026, 7, 24, 10, 0, 0).getTime();
+  const s = fullChurch(SUN);
+  s.schedule = { sabbath: 0, bible_study: 3, choir_rehearsal: 5 };
+
+  const sunday = dueCharacters(s, SUN);
+  ok('Mother Hayes comes on the Sabbath', sunday.includes('mother_hayes'));
+  ok('Deacon Pruitt comes every day', sunday.includes('deacon_pruitt'));
+
+  for (const id of sunday) markArrived(s, id, SUN);
+  ok('nobody comes twice in one day', dueCharacters(s, SUN).length === 0);
+
+  const monday = dueCharacters(s, MON);
+  ok('the Deacon is back on Monday', monday.includes('deacon_pruitt'));
+  ok('Mother Hayes is not — she comes for gatherings',
+     !monday.includes('mother_hayes'));
+
+  const arrival = makeArrival(s, 'mother_hayes', SUN);
+  ok('her appearance is fixed, not sampled',
+     arrival.appearance.base === 'elder_f' && arrival.appearance.hair === 'church_hat',
+     '(she must look like herself every time)');
+  ok('she brings a word with her', typeof arrival.greeting === 'string' && arrival.greeting.length > 0);
+  ok('and she never comes empty-handed', arrival.gift?.favor > 0);
+}
+
+console.log('\n=== 61. Titles are not doubled ===');
+{
+  ok('a name that already carries its title is left alone',
+     displayName('Mother Hayes', 'Mother') === 'Mother Hayes',
+     '(blind prefixing produced "Mother Mother Hayes")');
+  ok('a bare name gets its title', displayName('Hayes', 'Mother') === 'Mother Hayes');
+  ok('no title is fine', displayName('A stranger', null) === 'A stranger');
+  ok('the converted stranger is not doubled either',
+     displayName('Brother Terrence', 'Brother') === 'Brother Terrence');
+
+  const s = fullChurch(TUESDAY_8AM);
+  ok('arrivals carry a ready-to-show name',
+     !/Mother Mother|Deacon Deacon/.test(makeArrival(s, 'mother_hayes', TUESDAY_8AM).display));
+}
+
+console.log('\n=== 62. The stranger\'s arc ===');
+{
+  const s = fullChurch(TUESDAY_8AM);
+  s.currency.supplies = { food: 99, clothing: 99 };
+  const def = CHARACTER_BY_ID.the_stranger;
+  let t = TUESDAY_8AM;
+
+  const needs = new Set();
+  for (let i = 0; i < def.arc.visitsBeforeBaptism; i++) {
+    const a = makeArrival(s, 'the_stranger', t);
+    needs.add(a.needId);
+    ok(`visit ${i + 1} does not yet ask for baptism`, a.needId !== 'baptism');
+    markArrived(s, 'the_stranger', t);
+    onServed(s, 'the_stranger', t, { needId: a.needId });
+    t += 2 * 24 * H;
+  }
+  ok('the need changes from visit to visit', needs.size > 1, `(${[...needs].join(', ')})`);
+
+  const asking = makeArrival(s, 'the_stranger', t);
+  ok('after enough kindness he asks for baptism', asking.needId === 'baptism');
+  ok('and says so', asking.askingBaptism === true && /want what you all have/.test(asking.greeting));
+
+  markArrived(s, 'the_stranger', t);
+  const out = onServed(s, 'the_stranger', t, { needId: 'baptism' });
+  ok('baptism converts him', out.conversion !== null);
+  ok('he takes a name', /^Brother /.test(out.conversion.name), `(${out.conversion.name})`);
+  ok('the moment carries scripture', out.conversion.scripture.includes('—'));
+
+  const p = arcProgress(s);
+  ok('the arc records it', p.converted && p.name === out.conversion.name);
+  ok('converting is a one-time event',
+     onServed(s, 'the_stranger', t + H, { needId: 'baptism' }).conversion === null);
+
+  const after = makeArrival(s, 'the_stranger', t + 3 * 24 * H);
+  ok('he comes back as himself', after.name === out.conversion.name);
+  ok('dressed differently', after.appearance.outfit === 'sunday_suit');
+  ok('and now brings favor too', after.gift?.favor > 0);
+}
+
+console.log('\n=== 63. A conversion outranks everything ===');
+{
+  const report = { souls: 4, rooms: ['Fellowship Hall'], waiting: [],
+                   conversion: { name: 'Brother Curtis' } };
+  ok('nothing outranks a soul being saved',
+     headlineFor(report, []) === 'Brother Curtis was baptized.',
+     '(even a finished room)');
+}
+
+console.log('\n=== 64. Timed boosts wear off ===');
+{
+  const s = fullChurch(TUESDAY_8AM);
+  s.buffs = [];
+  onServed(s, 'deacon_pruitt', TUESDAY_8AM, { needId: 'food' });
+
+  ok('the Deacon leaves the work moving faster',
+     s.buffs.some((b) => b.id === 'deacon_pruitt'));
+  ok('and it counts while it lasts',
+     resolveModifiers(s, TUESDAY_8AM + 60000).production_speed > 1);
+  ok('but not once it has run out',
+     Math.abs(resolveModifiers(s, TUESDAY_8AM + 2 * H).production_speed - 1) < 1e-9,
+     '(an expired buff must never contribute)');
+
+  ok('expired buffs are swept up', pruneBuffs(s, TUESDAY_8AM + 2 * H) === 1 && s.buffs.length === 0);
+  ok('serving him again refreshes rather than stacking', (() => {
+    onServed(s, 'deacon_pruitt', TUESDAY_8AM, { needId: 'food' });
+    onServed(s, 'deacon_pruitt', TUESDAY_8AM + 60000, { needId: 'food' });
+    return s.buffs.filter((b) => b.id === 'deacon_pruitt').length === 1;
+  })());
+
+  // Choir rehearsal has no expiry and must survive the sweep.
+  s.buffs.push({ id: 'choir_rehearsal', type: 'service_multiplier', value: 0.3, consumeOnService: true });
+  pruneBuffs(s, TUESDAY_8AM + 99 * H);
+  ok('a rehearsal buff has no expiry and is not swept',
+     s.buffs.some((b) => b.id === 'choir_rehearsal'));
+}
+
+console.log('\n=== 65. Regulars come while you are away ===');
+{
+  const SUN = new Date(2026, 7, 23, 6, 0, 0).getTime();
+  const s = fullChurch(SUN);
+  s.schedule = { sabbath: 0, bible_study: 3, choir_rehearsal: 5 };
+  s.currency.supplies = { food: 99, clothing: 99 };
+  const favorBefore = s.currency.favor;
+
+  const r = resolveOffline(s, SUN + 6 * H, 'p-regulars');
+  ok('Mother Hayes does not wait for the app to open',
+     (r.summary.visitors || []).some((v) => /Hayes/.test(v.name)),
+     `(${(r.summary.visitors || []).map((v) => v.name).join(', ')})`);
+  ok('and she leaves favor behind', r.state.currency.favor > favorBefore);
+
+  const report = buildAwayReport(r.summary, r.state, []);
+  ok('the away card names who came by', report.visitors.length > 0,
+     `("${report.visitors[0]}")`);
+}
+
+console.log('\n=== 66. The congregation processes out ===');
+{
+  // The bug: finishService cleared 16 seats and refilled 16 from
+  // the vestibule in the same instant. The count never changed, so
+  // nothing moved on screen and it looked like nobody left.
+  const r = resolveOffline(newState(TUESDAY_8AM), TUESDAY_8AM + 9 * H, 'p-out');
+  const s = r.state;
+  const NOW = TUESDAY_8AM + 9 * H;
+  const sys = new VisitorSystem(s, new PathCache().warm(s), 'p-out');
+
+  const seatedBefore = s.sanctuary.seated;
+  const vestBefore = s.sanctuary.vestibule;
+  ok('the pews are full and people wait outside',
+     seatedBefore > 0 && vestBefore > 0);
+
+  startService(s, 'come_unto_me', NOW);
+  const out = finishService(s, NOW + 180000, { gradual: true });
+
+  ok('the pews actually empty', s.sanctuary.seated === 0,
+     '(instant refill left the count unchanged and nothing appeared to happen)');
+  ok('and nobody has jumped the queue yet', s.sanctuary.vestibule === vestBefore);
+  ok('the service still reports who was there', out.congregation === seatedBefore);
+
+  const c = sys.concludeService(NOW + 180000, { standIns: seatedBefore });
+  ok('figures are sent out to be seen leaving', c.procession > 0);
+  ok('the procession is capped so it is not a stampede',
+     c.procession <= TUNING.MAX_PROCESSION);
+  ok('they are walking, not standing',
+     sys.visitors.filter((v) => v.phase === 'leaving').length === c.procession);
+
+  // The vestibule files in one at a time.
+  let t = NOW + 180000;
+  const seatedAt = [];
+  for (let i = 0; i < 20 * 30; i++) { sys.update(1 / 30, t); t += 1000 / 30; }
+  seatedAt.push(s.sanctuary.seated);
+  ok('the vestibule files in and fills the pews again',
+     s.sanctuary.seated > 0, `(${s.sanctuary.seated} seated)`);
+  ok('and the vestibule has drained accordingly',
+     s.sanctuary.vestibule < vestBefore,
+     `(${vestBefore} → ${s.sanctuary.vestibule})`);
+  ok('never beyond capacity', s.sanctuary.seated <= 16);
+}
+
+console.log('\n=== 67. Refilling is paced, not instant ===');
+{
+  const s = fullChurch(TUESDAY_8AM);
+  clearSeats(s);
+  s.sanctuary.vestibule = 10;
+  s.sanctuary.lastRefillAt = 0;
+
+  ok('one person moves at a time', refillStep(s, TUESDAY_8AM) === true &&
+     s.sanctuary.seated === 1);
+  ok('and not again immediately',
+     refillStep(s, TUESDAY_8AM + 100) === false && s.sanctuary.seated === 1);
+  ok('but again after the interval',
+     refillStep(s, TUESDAY_8AM + TUNING.REFILL_INTERVAL_MS + 1) === true &&
+     s.sanctuary.seated === 2);
+
+  ok('an empty vestibule moves nobody',
+     refillStep({ ...s, sanctuary: { ...s.sanctuary, vestibule: 0 } },
+                TUESDAY_8AM + 99 * H) === false);
+
+  // Fill right up and confirm it stops.
+  let t = TUESDAY_8AM;
+  for (let i = 0; i < 100; i++) { t += TUNING.REFILL_INTERVAL_MS + 1; refillStep(s, t); }
+  ok('it stops at capacity', s.sanctuary.seated <= 16, `(${s.sanctuary.seated})`);
+  ok('counts stay consistent',
+     congregationMix(s).stranger + congregationMix(s).member + congregationMix(s).youth
+       === s.sanctuary.seated);
+}
+
+console.log('\n=== 68. Nobody is stranded by a service ===');
+{
+  const s = fullChurch(TUESDAY_8AM);
+  clearSeats(s);
+  s.sanctuary.vestibule = 0;
+  const sys = new VisitorSystem(s, new PathCache().warm(s), 'p-strand');
+
+  // Seat a live visitor by hand, then hold a service.
+  const v = sys.spawnOne(TUESDAY_8AM);
+  v.phase = 'seated';
+  v.seatIndex = 0;
+  v.category = seatPerson(s, { isStranger: false });
+
+  startService(s, 'come_unto_me', TUESDAY_8AM);
+  finishService(s, TUESDAY_8AM + 180000, { gradual: true });
+  sys.concludeService(TUESDAY_8AM + 180000, { standIns: 0 });
+
+  ok('a live worshipper is dismissed, not left sitting',
+     v.phase === 'leaving', `(phase=${v.phase})`);
+  ok('and gives up their seat', v.seatIndex === undefined);
+  ok('the seat count does not go negative or drift',
+     s.sanctuary.seated === 0, `(${s.sanctuary.seated})`);
+}
+
+console.log('\n=== 69. The pastor ===');
+{
+  const s = fullChurch(TUESDAY_8AM);
+  const p = ensurePastor(s, 'p-pastor');
+
+  ok('he is cast once and remembered', p.appearance !== undefined);
+  ok('and does not change between services', (() => {
+    const first = JSON.stringify(s.pastor.appearance);
+    ensurePastor(s, 'p-pastor');
+    return JSON.stringify(s.pastor.appearance) === first;
+  })(), '(a pastor whose face changes is not a pastor)');
+
+  ok('casting rules still apply to the office',
+     s.pastor.appearance.group === 'black' && s.pastor.appearance.fixed === true);
+  ok('and he wears clergy dress',
+     /^pastor_suit/.test(s.pastor.appearance.outfit), `(${s.pastor.appearance.outfit})`);
+  ok('the office may be held by a man or a woman', (() => {
+    const genders = new Set();
+    for (let i = 0; i < 60; i++) {
+      const st = fullChurch(TUESDAY_8AM);
+      ensurePastor(st, `player-${i}`);
+      genders.add(st.pastor.appearance.base.endsWith('_m') ? 'm' : 'f');
+    }
+    return genders.size === 2;
+  })(), '(per COTLG polity, unlike the bishops)');
+
+  ok('he starts seated', s.pastor.phase === 'seated');
+  ok('and is not busy', pastorBusy(s) === false);
+}
+
+console.log('\n=== 70. He rises, preaches, dismisses, and sits ===');
+{
+  const s = fullChurch(TUESDAY_8AM);
+  ensurePastor(s, 'p-cycle');
+  let t = TUESDAY_8AM;
+  const seen = [];
+  const step = (active) => {
+    const r = advancePastor(s, t, { serviceActive: active });
+    if (r.changed) seen.push(s.pastor.phase);
+    return r;
+  };
+
+  step(false);
+  ok('nothing happens without a service', s.pastor.phase === 'seated');
+
+  step(true);
+  ok('a service brings him to his feet', s.pastor.phase === 'rising');
+
+  t += PASTOR.RISE_MS + 1;
+  step(true);
+  ok('he reaches the pulpit', s.pastor.phase === 'preaching');
+  ok('and stays there while it runs', (() => {
+    t += 60000; step(true); return s.pastor.phase === 'preaching';
+  })());
+
+  const end = step(false);
+  ok('the service ending sends him into the benediction',
+     s.pastor.phase === 'dismissing');
+  ok('and he says something', typeof end.line === 'string' && end.line.length > 0,
+     `("${end.line}")`);
+
+  t += PASTOR.DISMISS_MS + 1;
+  const bye = step(false);
+  ok('then he sees the people out', s.pastor.phase === 'waving');
+  ok('with a farewell', typeof bye.line === 'string');
+
+  t += PASTOR.WAVE_MS + 1;
+  step(false);
+  ok('only then does he head back', s.pastor.phase === 'returning');
+
+  t += PASTOR.RETURN_MS + 1;
+  step(false);
+  ok('and sits back down', s.pastor.phase === 'seated');
+  ok('the full cycle ran in order',
+     seen.join(' → ') === 'rising → preaching → dismissing → waving → returning → seated',
+     `(${seen.join(' → ')})`);
+
+  ok('advancing again changes nothing',
+     advancePastor(s, t, { serviceActive: false }).changed === false,
+     '(must be idempotent — it runs every frame)');
+}
+
+console.log('\n=== 71. Where he stands ===');
+{
+  const s = fullChurch(TUESDAY_8AM);
+  ensurePastor(s, 'p-pose');
+  const t0 = roomTransform(s, s.rooms.find((r) => r.id === 'sanctuary'));
+  const plan = pewLayout(t0.size);
+  const chancel = chancelLayout(t0.size, plan);
+  let t = TUESDAY_8AM;
+
+  const seated = pastorPose(s, chancel, t);
+  ok('he sits in the chair, not at the pulpit',
+     Math.abs(seated.x - chancel.chair.x) < 1e-9 && seated.action === 'sit');
+  ok('the chair is on the platform, off to one side',
+     Math.abs(chancel.chair.x) > 0.5 && chancel.chair.z <= chancel.platform.z + 0.01);
+  ok('and it faces the people', chancel.chair.facing === plan.facing);
+
+  advancePastor(s, t, { serviceActive: true });
+  t += PASTOR.RISE_MS / 2;
+  const midway = pastorPose(s, chancel, t);
+  ok('he walks across rather than teleporting',
+     midway.action === 'walk' &&
+     midway.x > Math.min(chancel.chair.x, chancel.preacher.x) &&
+     midway.x < Math.max(chancel.chair.x, chancel.preacher.x),
+     `(x=${midway.x.toFixed(2)})`);
+
+  t += PASTOR.RISE_MS;
+  advancePastor(s, t, { serviceActive: true });
+  const preaching = pastorPose(s, chancel, t);
+  ok('he preaches from behind the pulpit',
+     Math.abs(preaching.x - chancel.preacher.x) < 1e-9 &&
+     Math.abs(preaching.z - chancel.preacher.z) < 1e-9);
+  ok('which is further from the people than the pulpit itself',
+     Math.abs(chancel.preacher.z - chancel.pulpit.z) > 0.2 &&
+     chancel.preacher.z < chancel.pulpit.z,
+     '(he stands behind it, not on it)');
+
+  advancePastor(s, t, { serviceActive: false });
+  ok('the benediction is given with a raised hand',
+     pastorPose(s, chancel, t).action === 'wave');
+
+  ok('progress through a phase is reported', (() => {
+    const half = phaseProgress(s, t + PASTOR.DISMISS_MS / 2);
+    return half > 0.4 && half < 0.6;
+  })());
+  ok('every phase is a known one', PHASES.includes(s.pastor.phase));
+}
+
+console.log('\n=== 72. Rooms are furnished, not empty pads ===');
+{
+  const buildable = ROOMS.filter((r) => r.id !== 'sanctuary').map((r) => r.id);
+  ok('every buildable room has something in it',
+     unfurnished(buildable).length === 0,
+     `(bare: ${unfurnished(buildable).join(', ') || 'none'})`);
+
+  const kitchen = FURNITURE.fellowship_hall;
+  ok('the kitchen has a cook line and tables',
+     kitchen.some((p) => p.id === 'range') && kitchen.some((p) => /table/.test(p.id)));
+
+  // Normalized coordinates are what keep furniture correct when a
+  // room is rotated or resized.
+  const all = Object.values(FURNITURE).flat();
+  ok('positions are normalized to the room',
+     all.every((p) => Math.abs(p.x) <= 0.5 && Math.abs(p.z) <= 0.5),
+     '(so rotation and resizing need no re-measuring)');
+  ok('footprints are fractions too',
+     all.every((p) => p.w > 0 && p.w <= 1 && p.d > 0 && p.d <= 1));
+  ok('nothing pokes through a wall',
+     all.every((p) => Math.abs(p.x) + p.w / 2 <= 0.52 && Math.abs(p.z) + p.d / 2 <= 0.52));
+  ok('heights are sane', all.every((p) => p.h > 0 && p.h < 2.2));
+  ok('every piece names a material', all.every((p) => typeof p.material === 'string'));
+  ok('every piece has an id', all.every((p) => typeof p.id === 'string' && p.id.length));
+
+  ok('the baptismal pool actually holds water',
+     FURNITURE.baptismal_pool.some((p) => p.material === 'water'));
+  ok('the closet has clothing on rails',
+     FURNITURE.benevolence_closet.some((p) => /cloth/i.test(p.material)));
+}
+
+console.log('\n=== 73. Rearranging is reachable ===');
+{
+  const s = fullChurch(TUESDAY_8AM);
+  s.currency.offering = 5000;
+
+  ok('moving costs offering', moveCost().offering > 0);
+  ok('and never favor', moveCost().favor === undefined);
+
+  ok('there are rooms to rearrange', s.rooms.length > 1);
+  ok('the sanctuary is among them',
+     canPickUp(s, 'sanctuary').ok,
+     '(it is a room like any other — repath keeps everyone routed)');
+  const movable = s.rooms.filter((r) => r.id !== 'sanctuary');
+
+  // Every movable room must have somewhere legal to go, or the
+  // Arrange button is a dead end.
+  const room = movable[0];
+  let somewhere = null;
+  for (let y = 0; y < s.grid.h && !somewhere; y++) {
+    for (let x = 0; x < s.grid.w && !somewhere; x++) {
+      if (x === room.x && y === room.y) continue;
+      if (canMoveTo(s, room.id, x, y, room.rot || 0).valid) somewhere = { x, y };
+    }
+  }
+  ok('a built room has somewhere legal to move to', somewhere !== null);
+
+  const before = s.currency.offering;
+  const res = moveRoom(s, room.id, somewhere.x, somewhere.y, room.rot || 0);
+  ok('the move goes through', res.ok);
+  ok('and is charged', s.currency.offering === before - moveCost().offering);
+  ok('everything is still reachable afterwards',
+     new PathCache().warm(s).allReachable(s));
+
+  ok('a move onto the sanctuary is refused',
+     canMoveTo(s, room.id, 4, 0, 0).valid === false);
+}
+
+console.log('\n=== 74. Moving a room does not strand anyone ===');
+{
+  // repath() used to fix only visitors in 'walking_in'. Everyone
+  // else kept stale state when a room moved out from under them.
+  const s = fullChurch(TUESDAY_8AM);
+  s.currency.offering = 9999;
+  s.currency.supplies = { food: 99, clothing: 99 };
+  const paths = new PathCache().warm(s);
+  const sys = new VisitorSystem(s, paths, 'p-move');
+
+  const hall = s.rooms.find((r) => r.id === 'fellowship_hall');
+  const oldDoor = doorAndApproach('fellowship_hall', hall.x, hall.y, hall.rot || 0).approach;
+
+  // Put someone at the hall's door, waiting to be fed.
+  const waiter = sys.spawnOne(TUESDAY_8AM);
+  waiter.needId = 'food';
+  waiter.phase = 'waiting';
+  waiter.pos = { x: oldDoor.x, y: oldDoor.y };
+  waiter.path = paths.toRoom(s, 'fellowship_hall');
+
+  // And someone on their way out.
+  const leaver = sys.spawnOne(TUESDAY_8AM);
+  leaver.phase = 'leaving';
+  leaver.pos = { x: oldDoor.x, y: oldDoor.y };
+
+  let target = null;
+  for (let y = 0; y < s.grid.h && !target; y++) {
+    for (let x = 0; x < s.grid.w && !target; x++) {
+      if (x === hall.x && y === hall.y) continue;
+      if (validatePlacement(s, 'fellowship_hall', x, y, 0, { ignoreRoom: 'fellowship_hall' }).valid) {
+        target = { x, y };
+      }
+    }
+  }
+  ok('somewhere to move the hall exists', target !== null);
+
+  moveRoom(s, 'fellowship_hall', target.x, target.y, 0);
+  paths.invalidate();
+  paths.warm(s);
+  const r = sys.repath();
+
+  ok('the waiting visitor is sent to the door\'s new position',
+     waiter.phase === 'walking_in' && r.resent >= 1,
+     '(they used to keep standing where the door used to be)');
+  const newDoor = doorAndApproach('fellowship_hall', target.x, target.y, 0).approach;
+  ok('and their route ends at the new door',
+     JSON.stringify(waiter.path[waiter.path.length - 1]) === JSON.stringify(newDoor));
+
+  ok('the departing visitor gets a fresh route out', leaver.path?.length >= 2);
+  ok('starting from where they actually stand',
+     leaver.path[0].x === Math.round(leaver.pos.x) &&
+     leaver.path[0].y === Math.round(leaver.pos.y),
+     '(it used to reverse the route they arrived on)');
+  ok('and ending at the front door',
+     JSON.stringify(leaver.path[leaver.path.length - 1]) === JSON.stringify(s.grid.entrance));
+
+  // Everyone walks it out without breaking.
+  let t = TUESDAY_8AM;
+  for (let i = 0; i < 60 * 30; i++) { sys.update(1 / 30, t); t += 1000 / 30; }
+  const broken = sys.visitors.filter((v) =>
+    (v.phase === 'walking_in' || v.phase === 'leaving') && (!v.path || v.path.length < 2));
+  ok('nobody is left with a broken path', broken.length === 0, `(${broken.length} broken)`);
+}
+
+console.log('\n=== 75. Leaving starts from where you stand ===');
+{
+  const s = fullChurch(TUESDAY_8AM);
+  const paths = new PathCache().warm(s);
+  const sys = new VisitorSystem(s, paths, 'p-exit');
+
+  // A seated worshipper, dismissed by the end of a service.
+  clearSeats(s);
+  const v = sys.spawnOne(TUESDAY_8AM);
+  v.phase = 'seated';
+  v.seatIndex = 0;
+  v.category = seatPerson(s, { isStranger: false });
+  const sanctuary = s.rooms.find((r) => r.id === 'sanctuary');
+  const door = doorAndApproach('sanctuary', sanctuary.x, sanctuary.y, sanctuary.rot || 0).approach;
+  v.pos = { x: door.x, y: door.y };
+
+  startService(s, 'come_unto_me', TUESDAY_8AM);
+  finishService(s, TUESDAY_8AM + 180000, { gradual: true });
+  sys.concludeService(TUESDAY_8AM + 180000, { standIns: 0 });
+
+  ok('they are walking out', v.phase === 'leaving');
+  ok('from the sanctuary door, not from a remembered route',
+     v.path[0].x === door.x && v.path[0].y === door.y);
+  ok('and the route reaches the entrance',
+     JSON.stringify(v.path[v.path.length - 1]) === JSON.stringify(s.grid.entrance));
+
+  let t = TUESDAY_8AM + 180000;
+  for (let i = 0; i < 60 * 30; i++) { sys.update(1 / 30, t); t += 1000 / 30; }
+  ok('and they actually get there', !sys.visitors.some((x) => x.id === v.id));
+}
+
+console.log('\n=== 76. The sanctuary moves, but not mid-service ===');
+{
+  const s = fullChurch(TUESDAY_8AM);
+  s.currency.offering = 9999;
+  clearSeats(s);
+
+  ok('an idle sanctuary can be picked up', canPickUp(s, 'sanctuary').ok);
+
+  for (let i = 0; i < 8; i++) seatPerson(s, { isStranger: false });
+  ok('a full sanctuary can still be picked up', canPickUp(s, 'sanctuary').ok,
+     '(figures snap, which is cosmetic — nothing breaks)');
+
+  startService(s, 'come_unto_me', TUESDAY_8AM);
+  const blocked = canPickUp(s, 'sanctuary');
+  ok('but not while service is going on', blocked.ok === false,
+     '(it would teleport the pastor out of the pulpit)');
+  ok('and it says why', blocked.reason === MOVE_REASONS.DURING_SERVICE,
+     `("${blocked.reason}")`);
+  ok('the move itself is refused too',
+     moveRoom(s, 'sanctuary', 0, 0, 0).reason === MOVE_REASONS.DURING_SERVICE);
+  ok('and nothing is charged', s.currency.offering === 9999);
+
+  ok('other rooms are unaffected by a service',
+     canPickUp(s, 'fellowship_hall').ok === true,
+     '(only the sanctuary is in use)');
+
+  finishService(s, TUESDAY_8AM + 180000, { gradual: true });
+  ok('once service is over it can move again', canPickUp(s, 'sanctuary').ok);
+
+  // fullChurch() builds everything, so use a bare church here.
+  ok('a room that was never built cannot be picked up',
+     canPickUp(newState(TUESDAY_8AM), 'baptismal_pool').reason === MOVE_REASONS.NOT_BUILT);
+}
+
+console.log('\n=== 77. Actually moving the sanctuary ===');
+{
+  const s = newState(TUESDAY_8AM);   // roomier: sanctuary alone
+  s.currency.offering = 9999;
+  const paths = new PathCache().warm(s);
+  const sys = new VisitorSystem(s, paths, 'p-sanct');
+
+  for (let i = 0; i < 6; i++) seatPerson(s, { isStranger: false });
+  const seatedBefore = s.sanctuary.seated;
+
+  const sanctuary = s.rooms.find((r) => r.id === 'sanctuary');
+  let target = null;
+  for (let y = 0; y < s.grid.h && !target; y++) {
+    for (let x = 0; x < s.grid.w && !target; x++) {
+      if (x === sanctuary.x && y === sanctuary.y) continue;
+      if (canMoveTo(s, 'sanctuary', x, y, 0).valid) target = { x, y };
+    }
+  }
+  ok('there is somewhere to put it', target !== null,
+     '(a 6x8 footprint has few options — that is fine)');
+
+  const res = moveRoom(s, 'sanctuary', target.x, target.y, 0);
+  ok('the move succeeds', res.ok, `(${res.reason || ''})`);
+  ok('the congregation is not lost', s.sanctuary.seated === seatedBefore);
+
+  paths.invalidate(); paths.warm(s);
+  sys.repath();
+  ok('and the church is still walkable', paths.allReachable(s));
+  ok('the front door still reaches the sanctuary',
+     paths.toRoom(s, 'sanctuary') !== null);
 }
 
 console.log(`\n${'='.repeat(46)}\n  ${pass} passed, ${fail} failed\n${'='.repeat(46)}\n`);

@@ -12,7 +12,9 @@ import { NEEDS, NEED_BY_ID } from '../data/needs.js';
 import { advanceProduction, advanceConstruction } from './production.js';
 import { bucketRng, weightedPick } from './rng.js';
 import { resolveModifiers, effectiveVisitorRate, strangerShare } from './modifiers.js';
-import { grantRehearsalBuff } from './rhythm.js';
+import { grantRehearsalBuff, pruneBuffs } from './rhythm.js';
+import { dueCharacters, makeArrival, markArrived, onServed } from './characters.js';
+import { canServe } from './serve.js';
 import { baseSeats, seatCapacity, vestibuleCapacity, seatPerson } from './sanctuary.js';
 
 const emptySummary = () => ({
@@ -60,6 +62,30 @@ export function resolveOffline(state, nowMs, playerId) {
 
     // 0. Choir rehearsal happens whether or not anyone is watching.
     if (grantRehearsalBuff(s, t)) summary.rehearsed = true;
+    pruneBuffs(s, t);
+
+    // 0b. So do the people who come every week. Mother Hayes does
+    //     not wait for the pastor to open the app.
+    for (const id of dueCharacters(s, t)) {
+      const arrival = makeArrival(s, id, t);
+      markArrived(s, id, t);
+      summary.visitors = summary.visitors || [];
+      // They are only SERVED if the church can meet what they came
+      // for — otherwise they came, and went, like anyone else.
+      if (canServe(s, arrival.needId).ok) {
+        const need = NEED_BY_ID[arrival.needId];
+        if (need.supply) s.currency.supplies[need.supply] -= need.supplyCost;
+        s.currency.offering += need.offering;
+        summary.offering += need.offering;
+        const extra = onServed(s, id, t, { needId: arrival.needId });
+        summary.visitors.push({ id, name: extra.conversion?.name || arrival.display,
+                                served: true, conversion: extra.conversion || null });
+        if (extra.conversion) summary.conversion = extra.conversion;
+      } else {
+        summary.visitors.push({ id, name: arrival.display, served: false });
+        summary.turnedAway[arrival.needId] = (summary.turnedAway[arrival.needId] || 0) + 1;
+      }
+    }
 
     // 1. Complete construction (shared with the live loop)
     for (const roomId of advanceConstruction(s, t)) {

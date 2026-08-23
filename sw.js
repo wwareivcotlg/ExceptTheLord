@@ -14,7 +14,7 @@
 // Bump BUILD on every deploy.
 // ============================================================
 
-const BUILD = 'v13-2026-08-23';
+const BUILD = 'v19-2026-08-23';
 const CACHE = `etl-${BUILD}`;
 
 const SHELL = [
@@ -25,16 +25,18 @@ const SHELL = [
   './src/core/modifiers.js', './src/core/sanctuary.js', './src/core/prayer.js',
   './src/core/casting.js', './src/core/serve.js',
   './src/core/production.js', './src/core/build.js', './src/core/service.js',
-  './src/core/progression.js', './src/core/ministry.js', './src/core/rhythm.js', './src/core/away.js',
+  './src/core/progression.js', './src/core/ministry.js', './src/core/rhythm.js', './src/core/away.js', './src/core/characters.js', './src/core/pastor.js',
   './src/sim/pathfinding.js', './src/sim/visitors.js',
   './src/render/scene.js', './src/render/camera.js', './src/render/church.js',
   './src/render/layout.js', './src/render/palette.js',
   './src/render/characters.js', './src/render/bubble.js',
   './src/render/crowd.js', './src/render/picking.js',
-  './src/render/placement.js', './src/render/sites.js',
+  './src/render/placement.js', './src/render/sites.js', './src/render/pastor.js',
+  './src/render/interiors.js',
   './src/data/tuning.js', './src/data/needs.js', './src/data/rooms.js',
   './src/data/ministries.js', './src/data/schedule.js', './src/data/casting.js',
-  './src/data/controls.js', './src/data/sermons.js', './src/data/ranks.js'
+  './src/data/controls.js', './src/data/sermons.js', './src/data/ranks.js', './src/data/characters.js',
+  './src/data/furniture.js'
 ];
 
 self.addEventListener('install', (e) => {

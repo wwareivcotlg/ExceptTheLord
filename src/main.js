@@ -11,7 +11,8 @@ import { resolveOffline } from './core/offline.js';
 import { loadLocal, writeLocal, getOrCreatePlayerId } from './core/save.js';
 import { resolveModifiers } from './core/modifiers.js';
 import { advanceProduction, advanceConstruction, constructionRemaining } from './core/production.js';
-import { buildCatalog, startConstruction, cancelConstruction } from './core/build.js';
+import { buildCatalog, startConstruction, cancelConstruction, moveRoom,
+         moveCost, canMoveTo, canAfford, canPickUp } from './core/build.js';
 import { recommendSermon, sermonLibrary, unlockSermon, startService,
          canHoldService, serviceProgress, isServiceFinished, finishService,
          sermonPayout } from './core/service.js';
@@ -20,13 +21,16 @@ import { createCameraRig } from './render/camera.js';
 import { buildChurch } from './render/church.js';
 import { createCrowd } from './render/crowd.js';
 import { createSites } from './render/sites.js';
+import { createPastor } from './render/pastor.js';
 import { createPlacementTool } from './render/placement.js';
 import { installTapHandler } from './render/picking.js';
 import { PathCache } from './sim/pathfinding.js';
+import { ROOM_BY_ID } from './data/rooms.js';
 import { VisitorSystem } from './sim/visitors.js';
 import { BUILD } from './data/controls.js';
 import { ministryCatalog, foundMinistry } from './core/ministry.js';
 import { applyProgress, levelProgress } from './core/progression.js';
+import { advancePastor, ensurePastor } from './core/pastor.js';
 import { todayEvent, nextSpecialDay, grantRehearsalBuff, pendingRehearsal,
          needsOnboarding, setSchedule, selectableDays, getSchedule } from './core/rhythm.js';
 import { buildAwayReport, shouldShowAway, pushAwayHistory, awayHistory } from './core/away.js';
@@ -65,9 +69,20 @@ async function boot() {
   const rig = createCameraRig(sceneApi, state, canvas);
   const church = buildChurch(sceneApi, state);
   const sites = createSites(sceneApi, state);
+  ensurePastor(state, playerId);
   const paths = new PathCache().warm(state);
   const visitors = new VisitorSystem(state, paths, playerId);
-  const crowd = createCrowd(sceneApi, state, visitors, playerId);
+  const pastor = createPastor(sceneApi, state, playerId);
+  const crowd = createCrowd(sceneApi, state, visitors, playerId, (e) => {
+    if (e.type === 'conversion') {
+      status.textContent = `${e.line}  ${e.scripture}`;
+      save();
+    } else if (e.type === 'greeting' || e.type === 'farewell') {
+      status.textContent = `${e.name}: "${e.text}"`;
+    } else if (e.type === 'gift' && e.favor) {
+      status.textContent = `${e.name} left ${e.favor} favor.`;
+    }
+  });
 
   // ---------- Layout changes ----------
   // Anything that moves a wall must invalidate paths and rebuild
@@ -77,6 +92,7 @@ async function boot() {
     paths.warm(state);
     church.refresh(state);
     crowd.resetSeating();
+    pastor.reset();
     visitors.repath();
   }
 
@@ -84,10 +100,15 @@ async function boot() {
   const placement = createPlacementTool(sceneApi, state, {
     onChange(session) {
       const bar = $('place'), why = $('why'), confirm = $('confirm');
-      if (!session) { bar.classList.remove('on'); return; }
+      if (!session) {
+        bar.classList.remove('on');
+        $('confirm').textContent = 'Build';
+        return;
+      }
       bar.classList.add('on');
       const ok = session.valid;
-      why.textContent = ok ? 'Looks good. Tap Build.' : session.reason;
+      const verb = session.mode === 'move' ? 'Move' : 'Build';
+      why.textContent = ok ? `Looks good. Tap ${verb}.` : session.reason;
       why.className = ok ? 'good' : 'bad';
       confirm.disabled = !ok;
     },
@@ -140,12 +161,54 @@ async function boot() {
   $('confirm').addEventListener('click', () => {
     const s = placement.session;
     if (!s) return;
-    const res = startConstruction(state, s.roomId, s.x, s.y, s.rot, serverNow());
+    const res = s.mode === 'move'
+      ? moveRoom(state, s.roomId, s.x, s.y, s.rot)
+      : startConstruction(state, s.roomId, s.x, s.y, s.rot, serverNow());
     if (!res.ok) { $('why').textContent = res.reason; $('why').className = 'bad'; return; }
     placement.cancel();
     layoutChanged();
     save();
   });
+
+  // ---------- Arrange: move what is already built ----------
+  function renderArrange() {
+    const list = $('arrangeList');
+    const cost = moveCost();
+    list.innerHTML = '';
+    // Everything built can shift, sanctuary included — except
+    // while a service is in progress.
+    const movable = state.rooms;
+    if (!movable.length) {
+      list.innerHTML = '<p style="opacity:.6;font-size:.78rem">Nothing built yet to move.</p>';
+      return;
+    }
+    for (const room of movable) {
+      const def = ROOM_BY_ID[room.id];
+      const affordable = canAfford(state, cost);
+      const pickup = canPickUp(state, room.id);
+      const btn = document.createElement('button');
+      btn.className = 'card';
+      btn.disabled = !affordable || !pickup.ok;
+      btn.innerHTML =
+        `<span class="nm">${def?.name || room.id}</span>` +
+        `<span class="price"><span class="coin">${money(cost.offering)}</span></span>` +
+        `<span class="meta">${!pickup.ok ? pickup.reason
+          : affordable ? 'Drag to a new spot, then tap Move'
+          : 'Not enough offering'}</span>`;
+      btn.addEventListener('click', () => {
+        $('arrangeSheet').classList.remove('open');
+        placement.begin(room.id, 'move');
+        $('confirm').textContent = 'Move';
+      });
+      list.appendChild(btn);
+    }
+  }
+
+  $('openArrange').addEventListener('click', () => {
+    renderArrange();
+    $('arrangeSheet').classList.add('open');
+  });
+  $('closeArrange').addEventListener('click', () => $('arrangeSheet').classList.remove('open'));
 
   // ---------- While You Were Away ----------
   function renderAway(report, { showLedger = false } = {}) {
@@ -166,6 +229,12 @@ async function boot() {
         : '';
 
     const body = [];
+    if (report.conversion) {
+      body.push(`<section><h3>A new creature</h3><ul>` +
+        `<li>${report.conversion.line}</li>` +
+        `<li class="hint">${report.conversion.scripture}</li></ul></section>`);
+    }
+    if (report.visitors?.length) body.push(section('Who came by', report.visitors));
     if (report.rooms.length) body.push(section('Finished', report.rooms));
     body.push(section('Ministry', report.served.map((x) => x.text)));
     if (report.waiting.length) body.push(section('Waiting for you', report.waiting));
@@ -341,7 +410,15 @@ async function boot() {
       $('svc-start').disabled = true;
       $('svc-pick').style.display = 'none';
       if (isServiceFinished(state, now)) {
-        const out = finishService(state, now);
+        // Count who was seated as a bare number rather than as a
+        // visitor object — those need figures spawned to walk out,
+        // or the changeover happens invisibly.
+        const liveSeated = visitors.visitors.filter((v) => v.phase === 'seated').length;
+        const standIns = Math.max(0, (state.sanctuary.seated || 0) - liveSeated);
+
+        const out = finishService(state, now, { gradual: true });
+        visitors.concludeService(now, { standIns });
+
         status.textContent =
           `${out.sermon.title} — ${out.congregation} souls, +${money(out.offering)} offering, +${out.favor} favor`;
         save();
@@ -409,6 +486,13 @@ async function boot() {
     visitors.update(dt, now);
     crowd.update(dt);
     sites.update(now, rig);
+
+    // The pastor follows the service: he rises when it begins and
+    // does not sit back down until the room has cleared.
+    const step = advancePastor(state, now, { serviceActive: !!state.sanctuary.service });
+    if (step.line) status.textContent = step.line;
+    pastor.update(dt, now);
+
     updateService(now);
 
     $('p-off').textContent = money(state.currency.offering);

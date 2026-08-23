@@ -96,6 +96,10 @@ export function buildAwayReport(summary, state, history = []) {
 
   const rooms = (summary.completedRooms || []).map((id) => ROOM_BY_ID[id]?.name || id);
 
+  // The people who come back by name deserve their own line.
+  const visitors = (summary.visitors || []).map((v) =>
+    v.served ? `${v.name} came by` : `${v.name} came, and you were out of what they needed`);
+
   const report = {
     at: state.lastSavedAt,
     elapsedMs: summary.elapsedMs || 0,
@@ -111,6 +115,8 @@ export function buildAwayReport(summary, state, history = []) {
     supplies,
     rooms,
     rehearsed: !!summary.rehearsed,
+    visitors,
+    conversion: summary.conversion || null,
     headline: null,
   };
 
@@ -124,6 +130,8 @@ export function buildAwayReport(summary, state, history = []) {
  * weekly rhythm better than any tutorial.
  */
 export function headlineFor(report, history = []) {
+  // Nothing outranks a soul being saved.
+  if (report.conversion) return `${report.conversion.name} was baptized.`;
   if (report.rooms.length) return `${report.rooms[0]} is finished.`;
   if (!report.souls && !report.waiting.length) return 'A quiet stretch.';
 

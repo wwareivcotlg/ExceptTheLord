@@ -6,7 +6,7 @@ A 3D church builder for the Church of the Living God C.W.F.F. Members and strang
 arrive with needs; you build rooms and recruit ministries to meet them. Progress
 continues while the app is closed.
 
-**Status:** Build order steps 1–9 complete. Steps 10–11 remain.
+**Status:** Build order steps 1–10 complete. Step 11 remains.
 
 ---
 
@@ -25,7 +25,7 @@ python3 -m http.server 8000
 # then open http://localhost:8000
 ```
 
-**Tests** (416 assertions, no browser required):
+**Tests** (546 assertions, no browser required):
 
 ```bash
 node test/offline.test.js
@@ -54,11 +54,18 @@ node test/offline.test.js
   day selection, and rehearsals that happen whether or not anyone is watching
 - A While You Were Away card, reopenable from the HUD, backed by a five-entry
   ledger that gives the numbers context ("your busiest stretch this week")
+- Named characters — Mother Hayes, Deacon Pruitt, and a stranger whose repeat
+  visits end in baptism and a name
+- Furnished rooms — a kitchen with a cook line and fellowship tables, clothing
+  rails, a prayer altar and kneeler, a baptismal pool with water
+- An Arrange mode for repositioning built rooms
+- A pastor who sits on the platform, rises to the pulpit for service, gives the
+  benediction, sees the people out, and sits back down
 
 ## What doesn't exist yet
 
-Named characters and the conversion arc · seasonal ministry packs · convention
-events · any audio · Supabase sync is written but never called from `main.js`
+Seasonal ministry packs · convention events · any audio · Supabase sync is written
+but never called from `main.js`
 
 ---
 
@@ -78,6 +85,8 @@ there. You should not need to open `src/core/` to change how the game plays.
 | `data/casting.js` | congregation ramp, offices, vesture, poly budget |
 | `data/sermons.js` | sermon titles, KJV passages, affinities, payouts |
 | `data/ranks.js` | the recognition ladder and the XP curve |
+| `data/characters.js` | named regulars, their dialogue, and the conversion arc |
+| `data/furniture.js` | what stands inside each room |
 
 Away-card copy lives with the needs: each need carries `served` and `seeking`
 strings.
@@ -151,6 +160,41 @@ congregation once the library is full.
 rank expansion safe — nothing can be stranded by it. The entrance re-seats on the
 new front wall, walking along the row if a room already stands there.
 
+**Named arrivals are scheduled by day, not by dice.** "Has Mother Hayes come
+today?" has one answer whether the app is open or closed, so the live loop and the
+offline resolver agree without sharing code paths.
+
+**Titles are applied through `displayName()`.** Names that already carry their
+title are left alone — blind prefixing produced "Mother Mother Hayes", and the
+converted stranger would have hit the same thing.
+
+**The sanctuary can be moved, except during a service.** It is a room like any
+other and `repath()` keeps everyone routed when it goes. Moving it mid-service is
+the one case that is genuinely wrong — it would teleport the pastor out of the
+pulpit — so `canPickUp()` blocks that and says why.
+
+**Moving a room re-routes everyone mid-journey.** `repath()` covers walkers,
+people waiting at a door that has moved, and anyone on their way out. `#leave()`
+builds an exit route from where a person actually stands rather than reversing the
+route they arrived on — that reversal is only correct while the church stands
+still. Cached vestibule spots are cleared too, or people huddle outside where the
+sanctuary used to be.
+
+**Furniture is positioned in normalized room space.** x and z run -0.5 to 0.5
+across the room, and footprints are fractions of it, so a piece stays where it
+belongs when a room is rotated or resized — nothing needs re-measuring by hand.
+
+**The pastor is cast once and stored.** A pastor whose face changes between
+services is not a pastor. Per COTLG polity the office may be held by a man or a
+woman — unlike the bishops — and `castRole` enforces that difference.
+
+**After a service the changeover takes time.** `finishService` used to clear
+sixteen seats and refill sixteen from the vestibule in the same instant — the
+count never changed, so nothing moved on screen and it looked like nobody left.
+The live loop now passes `gradual: true`: the congregation processes out, and the
+vestibule files in one person every `REFILL_INTERVAL_MS`. Offline still refills
+instantly, since nobody is watching.
+
 **The pews are drawn from state, not from the live visitor list.** The offline
 resolver seats people by incrementing a count — there are no visitor objects for
 them. A renderer that draws only live visitors leaves the pews visibly empty while
@@ -174,11 +218,12 @@ still gathers a congregation, still earns, and loses nothing.
 held (and later, souls served) alongside a level, so you cannot buy your way up on
 material service alone.
 
-## Next: step 10
+## Next: step 11
 
-Named characters and the conversion arc — Mother Hayes, Deacon Pruitt, and the
-stranger who becomes a member. `data/characters.js` does not exist yet; the
-casting system it will build on does.
+The remaining ministries as content, seasonal pack scaffolding, convention events,
+audio, and polish. The seasonal machinery already exists — `season` and `pack`
+fields on a ministry are honoured by `resolveModifiers` — but nothing uses them
+yet.
 
 ## Open questions
 

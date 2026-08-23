@@ -114,8 +114,12 @@ export function resolveModifiers(state, atMs) {
     for (const mod of event.modifiers) add(mod.type, 'schedule', mod.value);
   }
 
-  // --- Persistent buffs (choir rehearsal; consumed by next service) ---
+  // --- Buffs ---
+  // Two kinds: choir rehearsal persists until a service spends it,
+  // and timed boosts (Deacon Pruitt) simply wear off. An expired
+  // buff must never contribute.
   for (const buff of state.buffs || []) {
+    if (buff.expiresAt && atMs > buff.expiresAt) continue;
     add(buff.type, 'buff', buff.value);
   }
 

@@ -82,6 +82,22 @@ export function clearSeats(state) {
   state.sanctuary.mix = EMPTY_MIX();
 }
 
+/**
+ * Move ONE person from the vestibule to a pew, no faster than the
+ * refill interval. This is what makes the changeover visible.
+ * @returns {boolean} whether anyone moved
+ */
+export function refillStep(state, atMs) {
+  if (!(state.sanctuary.vestibule > 0)) return false;
+  if (state.sanctuary.seated >= seatCapacity(state)) return false;
+  const last = state.sanctuary.lastRefillAt || 0;
+  if (atMs - last < TUNING.REFILL_INTERVAL_MS) return false;
+  state.sanctuary.lastRefillAt = atMs;
+  seatPerson(state, { isStranger: false });
+  state.sanctuary.vestibule -= 1;
+  return true;
+}
+
 /** Move people from the vestibule into any open seat. Returns count moved. */
 export function seatFromVestibule(state, rng = null) {
   const open = seatCapacity(state) - state.sanctuary.seated;
@@ -151,14 +167,22 @@ export function deployFoldingChairs(state, atMs) {
  * they last exactly one service — and the next wave files in from
  * the vestibule to fill the permanent pews.
  */
-export function completeService(state) {
+/**
+ * @param {object} state
+ * @param {object} [opts]
+ * @param {boolean} [opts.refill] fill the pews again immediately.
+ *   True while nobody is watching (offline). False in the live
+ *   loop, where the vestibule files in one at a time so the
+ *   changeover is something you can actually see.
+ */
+export function completeService(state, { refill = true } = {}) {
   const congregation = state.sanctuary.seated;
   const mix = congregationMix(state);
   const chairsUsed = state.sanctuary.tempSeats || 0;
 
   clearSeats(state);
   state.sanctuary.tempSeats = 0;          // chairs folded up and stored
-  const refilled = seatFromVestibule(state);
+  const refilled = refill ? seatFromVestibule(state) : 0;
 
   state.stats.servicesHeld = (state.stats.servicesHeld || 0) + 1;
   return { congregation, mix, chairsUsed, refilled };

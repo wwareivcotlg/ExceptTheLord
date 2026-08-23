@@ -185,7 +185,7 @@ export function isServiceFinished(state, atMs) {
  * the chairs, consume the choir rehearsal buff, rest the preacher,
  * and let the vestibule file in for next time.
  */
-export function finishService(state, atMs) {
+export function finishService(state, atMs, { gradual = false } = {}) {
   const svc = state.sanctuary.service;
   if (!svc) return { ok: false, reason: 'no_service' };
 
@@ -194,7 +194,7 @@ export function finishService(state, atMs) {
   state.currency.favor += payout.favor;
   state.xp = (state.xp || 0) + payout.xp;
 
-  const cleared = clearAndRefill(state);
+  const cleared = clearAndRefill(state, { refill: !gradual });
   state.stats.totalServed = (state.stats.totalServed || 0) + cleared.congregation;
 
   // Choir rehearsal buffs exist to be spent on a service.

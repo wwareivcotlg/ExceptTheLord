@@ -1,6 +1,6 @@
 // Bump this on every deploy. It is shown in the HUD so you can
 // always tell which build is actually running in the browser.
-export const BUILD = 'v13-2026-08-23';
+export const BUILD = 'v19-2026-08-23';
 
 // ============================================================
 // CONTROLS — how the camera and taps feel. Safe to edit.

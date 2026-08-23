@@ -31,6 +31,19 @@ export const PALETTE = {
   skyTop: 0xd8e2ee,
   skyBottom: 0xb9a88f,
 
+  // Furniture. Kept muted so the sanctuary keeps the eye.
+  steel: 0x9aa3ad,
+  counter: 0xcfc4ae,
+  wood: 0x7a5734,
+  cloth: 0x6f7fa8,
+  clothAlt: 0x8c6f8f,
+  linen: 0xe8dfcb,
+  cushion: 0x3c3489,
+  brass: 0xb87a00,
+  mirror: 0xc8d6e2,
+  tile: 0xdcd6c6,
+  water: 0x4f8fb5,
+
   // Interaction feedback
   valid: 0x5fa86b,
   invalid: 0xb4463c,

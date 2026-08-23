@@ -7,7 +7,8 @@
 
 import * as THREE from 'three';
 import { FigurePool, buildFigure } from './characters.js';
-import { createBubble, setBubbleState, createPayoutPopup, stepPopup } from './bubble.js';
+import { createBubble, setBubbleState, createPayoutPopup, stepPopup,
+         createNameplate } from './bubble.js';
 import { tileToWorld, roomTransform, pewLayout, seatSlots, localToWorld,
          seatedPose } from './layout.js';
 import { projectPoint } from './picking.js';
@@ -18,7 +19,7 @@ import { doorAndApproach } from '../core/grid.js';
 
 const MOVING = new Set(['walking_in', 'leaving']);
 
-export function createCrowd(sceneApi, state, visitors, playerId = 'local') {
+export function createCrowd(sceneApi, state, visitors, playerId = 'local', onEvent = null) {
   const { scene, camera, renderer } = sceneApi;
   const root = new THREE.Group();
   root.name = 'crowd';
@@ -26,6 +27,7 @@ export function createCrowd(sceneApi, state, visitors, playerId = 'local') {
 
   const figures = new FigurePool(root);
   const bubbles = new Map();
+  const plates = new Map();
   const popups = [];
   const _v = new THREE.Vector3();
 
@@ -84,6 +86,19 @@ export function createCrowd(sceneApi, state, visitors, playerId = 'local') {
       bubbles.set(v.id, b);
     }
     return b;
+  }
+
+  function plateFor(v) {
+    const label = v.display || v.name;
+    let p = plates.get(v.id);
+    if (!p || p.userData.text !== label) {
+      if (p) { root.remove(p); p.material.map?.dispose(); p.material.dispose(); }
+      p = createNameplate(label);
+      p.userData.text = label;
+      root.add(p);
+      plates.set(v.id, p);
+    }
+    return p;
   }
 
   function update(dt) {
@@ -198,8 +213,24 @@ export function createCrowd(sceneApi, state, visitors, playerId = 'local') {
       for (const i of [...congregants.keys()]) if (!wanted.has(i)) releaseCongregant(i);
     }
 
+    // Nameplates ride above the people who have names.
+    for (const v of list) {
+      if (!v.characterId || !(v.display || v.name)) continue;
+      const g = figures.acquire(v);
+      const plate = plateFor(v);
+      plate.position.set(g.position.x, g.position.y + g.userData.height + 1.0, g.position.z);
+      plate.visible = v.phase !== 'done';
+    }
+
     figures.reconcile(list);
     const live = new Set(list.map((v) => v.id));
+    for (const [id, p] of [...plates]) {
+      if (live.has(id)) continue;
+      root.remove(p);
+      p.material.map?.dispose();
+      p.material.dispose();
+      plates.delete(id);
+    }
     for (const [id, b] of [...bubbles]) {
       if (live.has(id)) continue;
       root.remove(b);
@@ -208,6 +239,20 @@ export function createCrowd(sceneApi, state, visitors, playerId = 'local') {
     }
 
     for (const e of visitors.drainEvents()) {
+      if (e.type === 'conversion' && e.at) {
+        const p = tileToWorld(state, e.at.x, e.at.y);
+        const pop = createPayoutPopup(e.name, 0xE4B23F);
+        pop.position.set(p.x, 2.6, p.z);
+        pop.userData.life = -1.4;          // lingers: this is the moment
+        root.add(pop);
+        popups.push(pop);
+        onEvent?.(e);
+        continue;
+      }
+      if (e.type === 'greeting' || e.type === 'farewell' || e.type === 'gift') {
+        onEvent?.(e);
+        continue;
+      }
       if (e.type !== 'served' || !e.at) continue;
       const p = tileToWorld(state, e.at.x, e.at.y);
       const pop = createPayoutPopup(`+${e.offering}`);
@@ -244,10 +289,16 @@ export function createCrowd(sceneApi, state, visitors, playerId = 'local') {
   return {
     root, update, candidates,
     get figureCount() { return figures.size + congregants.size; },
-    /** The sanctuary moved — recompute seats and clear stand-ins. */
+    /**
+     * The layout changed — recompute seats, drop stand-ins, and
+     * clear cached vestibule spots. Those spots are cached on the
+     * figure and would otherwise leave people huddled outside where
+     * the sanctuary used to be.
+     */
     resetSeating() {
       seating = null;
       for (const i of [...congregants.keys()]) releaseCongregant(i);
+      for (const g of figures.active.values()) delete g.userData.vestibuleSpot;
     },
   };
 }

@@ -125,12 +125,26 @@ export function buildFigure(composition) {
     return pose;
   };
 
+  /** Raised hand, held up and swaying — benediction and farewell. */
+  let wavePhase = 0;
+  group.userData.wave = (dt) => {
+    wavePhase += dt * 4.5;
+    legs[0].rotation.x = legs[1].rotation.x = 0;
+    // Right arm up and out; left stays at the side.
+    arms[1].rotation.z = -2.1 + Math.sin(wavePhase) * 0.22;
+    arms[1].rotation.x = -0.25;
+    arms[0].rotation.z = 0;
+    arms[0].rotation.x = 0;
+    group.position.y = 0;
+  };
+
   group.userData.stand = () => {
     legs.forEach((leg, i) => {
       leg.rotation.x = 0;
       leg.position.y = standing[i].y;
       leg.position.z = standing[i].z;
     });
+    arms.forEach((a) => { a.rotation.x = 0; a.rotation.z = 0; });
     group.position.y = 0;
   };
 

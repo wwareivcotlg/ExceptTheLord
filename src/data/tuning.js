@@ -67,6 +67,12 @@ export const TUNING = {
   },
   MOVE_ROOM_COST: 60,
 
+  // After a service the congregation files OUT and the vestibule
+  // files IN, one at a time. Instant swapping left the seat count
+  // unchanged, so nothing appeared to happen on screen.
+  REFILL_INTERVAL_MS: 900,
+  MAX_PROCESSION: 12,
+
   // Days may be changed, but not rotated to game the bonuses.
   SCHEDULE_CHANGE_COOLDOWN_MS: 30 * 24 * 60 * 60 * 1000,   // Offering. Never charge Favor to rearrange.
 

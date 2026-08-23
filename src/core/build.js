@@ -15,6 +15,11 @@ import { ROOMS, ROOM_BY_ID } from '../data/rooms.js';
 import { TUNING } from '../data/tuning.js';
 import { validatePlacement, legalPlacements } from './grid.js';
 
+export const MOVE_REASONS = {
+  DURING_SERVICE: 'Not while service is going on.',
+  NOT_BUILT: 'That room is not built.',
+};
+
 export const BUILD_REASONS = {
   ALREADY_BUILT: 'You already have one.',
   UNDER_CONSTRUCTION: 'Already being built.',
@@ -128,11 +133,28 @@ export function canMoveTo(state, roomId, x, y, rot) {
   return validatePlacement(state, roomId, x, y, rot, { ignoreRoom: roomId });
 }
 
+/**
+ * Can this room be picked up right now?
+ *
+ * The sanctuary CAN be moved — it is a room like any other, and
+ * repath() keeps everyone routed when it goes. What must not happen
+ * is moving it mid-service: that would teleport the pastor out of
+ * the pulpit and a seated congregation along with him.
+ */
+export function canPickUp(state, roomId) {
+  const room = state.rooms.find((r) => r.id === roomId);
+  if (!room) return { ok: false, reason: MOVE_REASONS.NOT_BUILT };
+  if (roomId === 'sanctuary' && state.sanctuary?.service) {
+    return { ok: false, reason: MOVE_REASONS.DURING_SERVICE };
+  }
+  return { ok: true };
+}
+
 /** Reposition a built room. */
 export function moveRoom(state, roomId, x, y, rot) {
+  const pickup = canPickUp(state, roomId);
+  if (!pickup.ok) return { ok: false, reason: pickup.reason };
   const room = state.rooms.find((r) => r.id === roomId);
-  if (!room) return { ok: false, reason: 'not_built' };
-  if (roomId === 'sanctuary') return { ok: false, reason: 'The sanctuary cannot be moved.' };
 
   const cost = moveCost();
   if (!canAfford(state, cost)) return { ok: false, reason: BUILD_REASONS.CANNOT_AFFORD, cost };
