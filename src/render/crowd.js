@@ -8,7 +8,8 @@
 import * as THREE from 'three';
 import { FigurePool } from './characters.js';
 import { createBubble, setBubbleState, createPayoutPopup, stepPopup } from './bubble.js';
-import { tileToWorld, roomTransform, pewLayout, seatSlots, localToWorld } from './layout.js';
+import { tileToWorld, roomTransform, pewLayout, seatSlots, localToWorld,
+         seatedPose } from './layout.js';
 import { projectPoint } from './picking.js';
 
 const MOVING = new Set(['walking_in', 'leaving']);
@@ -58,16 +59,23 @@ export function createCrowd(sceneApi, state, visitors) {
         const slot = s?.slots[v.seatIndex];
         if (slot) {
           const w = localToWorld(s.transform, slot);
-          g.position.set(w.x, 0.5, w.z);        // sitting height
-          g.rotation.y = s.transform.rotationY + (slot.facing < 0 ? Math.PI : 0);
-          g.userData.walk(dt, false);
+          // sit() sets the height itself — calling walk() here used
+          // to reset position.y to 0 and stand everyone on the floor.
+          const pose = g.userData.sit(slot.facing);
+          g.position.x = w.x;
+          g.position.z = w.z;
+          g.rotation.y = s.transform.rotationY + pose.extraYaw;
           const b = bubbleFor(v);
           setBubbleState(b, false);
-          b.position.set(w.x, 0.5 + g.userData.height + 0.4, w.z);
+          b.position.set(w.x, pose.groupY + g.userData.height + 0.4, w.z);
           b.visible = true;
+          g.userData.seated = true;
           continue;
         }
       }
+
+      // Anyone not seated stands normally.
+      if (g.userData.seated) { g.userData.stand(); g.userData.seated = false; }
 
       const p = tileToWorld(state, v.pos.x, v.pos.y);
       g.position.x = p.x;

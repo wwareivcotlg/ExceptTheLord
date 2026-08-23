@@ -11,7 +11,7 @@ import { rotatedSize, rotateLocal, rotateFacing, footprintTiles, doorAndApproach
 import { findPath, PathCache, distanceToRoom } from '../src/sim/pathfinding.js';
 import { tileToWorld, roomTransform, floorExtent, pathToWorld, cameraFrame,
          pewLayout, chairSlots, seatSlots, chancelLayout, localToWorld,
-         TILE } from '../src/render/layout.js';
+         seatedPose, SEAT_TOP_Y, TILE } from '../src/render/layout.js';
 import { PALETTE, LIGHTING, QUALITY } from '../src/render/palette.js';
 import { readFileSync } from 'node:fs';
 import { VisitorSystem, WALK_SPEED, AUTO_SERVE_DELAY, SERVE_DURATION } from '../src/sim/visitors.js';
@@ -1681,6 +1681,35 @@ console.log('\n=== 57. The ledger gives the numbers meaning ===');
      headlineFor({ souls: 0, waiting: [], rooms: [] }, []) === 'A quiet stretch.');
   ok('the ledger survives a save round-trip',
      JSON.parse(JSON.stringify(s.awayLog)).length === TUNING.AWAY_HISTORY);
+}
+
+console.log('\n=== 58. Sitting down ===');
+{
+  const legH = 1.72 * 0.44;
+  const pose = seatedPose(legH, -1);
+
+  ok('the figure lowers rather than standing on the floor',
+     pose.groupY < 0, `(drops ${pose.groupY.toFixed(2)})`,);
+  ok('the hips land exactly on the seat',
+     Math.abs(pose.groupY + legH - SEAT_TOP_Y) < 1e-9,
+     `(hips ${(pose.groupY + legH).toFixed(3)}, seat ${SEAT_TOP_Y})`);
+  ok('the thighs fold horizontal', Math.abs(pose.legRotX + Math.PI / 2) < 1e-9);
+  ok('and fold FORWARD, toward the chancel', pose.legZ < 0,
+     '(legs folding backward reads as kneeling on the pew)');
+
+  ok('a congregation facing -z needs no extra half turn',
+     pose.extraYaw === 0,
+     '(the figure already faces -z; adding PI aims it at the back wall)');
+  ok('the opposite facing does get one', seatedPose(legH, 1).extraYaw === Math.PI);
+
+  // Different builds sit at the same height.
+  const teen = seatedPose(1.44 * 0.44, -1);
+  ok('a shorter person still meets the seat',
+     Math.abs(teen.groupY + 1.44 * 0.44 - SEAT_TOP_Y) < 1e-9);
+  ok('but sits lower overall', teen.groupY > pose.groupY);
+
+  ok('the seat height matches the pew mesh', SEAT_TOP_Y > 0.4 && SEAT_TOP_Y < 0.8,
+     '(derived from render/church.js — change one, change the other)');
 }
 
 console.log(`\n${'='.repeat(46)}\n  ${pass} passed, ${fail} failed\n${'='.repeat(46)}\n`);

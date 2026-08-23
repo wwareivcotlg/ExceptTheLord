@@ -11,6 +11,7 @@
 
 import * as THREE from 'three';
 import { PALETTE } from './palette.js';
+import { seatedPose } from './layout.js';
 
 const BANDS = {
   adult: { height: 1.72, girth: 0.34, head: 0.23 },
@@ -106,6 +107,32 @@ export function buildFigure(composition) {
   }
 
   group.userData.height = band.height;
+  group.userData.legHeight = legH;
+
+  // Remember the standing pose so sitting can be undone.
+  const standing = legs.map((l) => ({ y: l.position.y, z: l.position.z }));
+
+  /** Sit on a pew: hips to the seat, thighs forward. */
+  group.userData.sit = (facing = -1) => {
+    const pose = seatedPose(legH, facing);
+    legs.forEach((leg, i) => {
+      leg.rotation.x = pose.legRotX;
+      leg.position.y = pose.legY;
+      leg.position.z = pose.legZ;
+    });
+    arms[0].rotation.x = arms[1].rotation.x = 0;
+    group.position.y = pose.groupY;
+    return pose;
+  };
+
+  group.userData.stand = () => {
+    legs.forEach((leg, i) => {
+      leg.rotation.x = 0;
+      leg.position.y = standing[i].y;
+      leg.position.z = standing[i].z;
+    });
+    group.position.y = 0;
+  };
 
   let phase = Math.random() * Math.PI * 2;
   group.userData.walk = (dt, moving) => {

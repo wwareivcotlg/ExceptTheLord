@@ -190,6 +190,36 @@ export function seatSlots(size, plan, capacity, { seatPitch = 0.45 } = {}) {
   return slots;
 }
 
+// Top surface of a pew seat, in room-local units. Derived from the
+// pew mesh in render/church.js — if that changes, change this.
+export const SEAT_TOP_Y = 0.58;
+
+/**
+ * How a figure is posed when sitting.
+ *
+ * Two things this must get right, both of which were wrong first
+ * time: the body has to LOWER so the hips meet the seat, and the
+ * legs have to fold FORWARD — toward the chancel, the same way the
+ * person is looking. Legs folding backward reads as kneeling on
+ * the pew.
+ *
+ * @param {number} legHeight  the figure's leg length
+ * @param {number} facing     -1 when the congregation looks toward -z
+ */
+export function seatedPose(legHeight, facing = -1, seatTop = SEAT_TOP_Y) {
+  return {
+    // Drop the whole figure until its hips rest on the seat.
+    groupY: seatTop - legHeight,
+    // Thighs run horizontally out from the hip, in the facing direction.
+    legRotX: -Math.PI / 2,
+    legY: legHeight * 0.95,
+    legZ: facing * legHeight * 0.42,
+    // The figure's own forward is -z, so a congregation facing -z
+    // needs NO extra half turn. Adding one aims them at the back wall.
+    extraYaw: facing < 0 ? 0 : Math.PI,
+  };
+}
+
 /**
  * Where folding chairs stand when the deacons bring them out —
  * the side margins pewLayout reserved, one chair per row per side.

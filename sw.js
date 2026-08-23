@@ -14,7 +14,7 @@
 // Bump BUILD on every deploy.
 // ============================================================
 
-const BUILD = 'v11-2026-08-23';
+const BUILD = 'v12-2026-08-23';
 const CACHE = `etl-${BUILD}`;
 
 const SHELL = [
