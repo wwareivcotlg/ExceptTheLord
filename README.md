@@ -25,7 +25,7 @@ python3 -m http.server 8000
 # then open http://localhost:8000
 ```
 
-**Tests** (399 assertions, no browser required):
+**Tests** (416 assertions, no browser required):
 
 ```bash
 node test/offline.test.js
@@ -150,6 +150,14 @@ congregation once the library is full.
 **The grid only ever grows, and rooms keep their coordinates.** That is what makes
 rank expansion safe — nothing can be stranded by it. The entrance re-seats on the
 new front wall, walking along the row if a room already stands there.
+
+**The pews are drawn from state, not from the live visitor list.** The offline
+resolver seats people by incrementing a count — there are no visitor objects for
+them. A renderer that draws only live visitors leaves the pews visibly empty while
+the rules consider them full, which then shunts every new arrival into the
+vestibule to stand at the door. Live seated visitors keep their own faces; every
+remaining seat gets a stand-in cast deterministically from the seat index, so the
+same church always looks like the same congregation.
 
 **An unmet need is described as a need, never a loss.** The away card says "5 came
 seeking baptism", not "5 turned away". Same number, same nudge to build the pool,

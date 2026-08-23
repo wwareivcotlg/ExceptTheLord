@@ -6,15 +6,19 @@
 // ============================================================
 
 import * as THREE from 'three';
-import { FigurePool } from './characters.js';
+import { FigurePool, buildFigure } from './characters.js';
 import { createBubble, setBubbleState, createPayoutPopup, stepPopup } from './bubble.js';
 import { tileToWorld, roomTransform, pewLayout, seatSlots, localToWorld,
          seatedPose } from './layout.js';
 import { projectPoint } from './picking.js';
+import { castCongregant } from '../core/casting.js';
+import { bucketRng } from '../core/rng.js';
+import { congregationMix } from '../core/sanctuary.js';
+import { doorAndApproach } from '../core/grid.js';
 
 const MOVING = new Set(['walking_in', 'leaving']);
 
-export function createCrowd(sceneApi, state, visitors) {
+export function createCrowd(sceneApi, state, visitors, playerId = 'local') {
   const { scene, camera, renderer } = sceneApi;
   const root = new THREE.Group();
   root.name = 'crowd';
@@ -24,6 +28,41 @@ export function createCrowd(sceneApi, state, visitors) {
   const bubbles = new Map();
   const popups = [];
   const _v = new THREE.Vector3();
+
+  // The congregation is a COUNT, not a list of visitors.
+  //
+  // The offline resolver seats people by incrementing
+  // state.sanctuary.seated — there are no visitor objects for them.
+  // Drawing only live visitors left the pews visibly empty while
+  // the rules considered them full, which then pushed every new
+  // arrival into the vestibule to stand at the door.
+  //
+  // So: the pews are filled from STATE. Live seated visitors keep
+  // their own faces and their own seats; every remaining seat gets
+  // a stand-in cast deterministically, so the same church always
+  // looks like the same congregation.
+  const congregants = new Map();   // seatIndex → figure
+
+  function congregantFor(seatIndex, mix) {
+    let g = congregants.get(seatIndex);
+    if (g) return g;
+    const rng = bucketRng(`${playerId}:pew`, seatIndex);
+    const total = mix.stranger + mix.member + mix.youth || 1;
+    const roll = rng() * total;
+    const person = castCongregant(state, rng);
+    person.isStranger = roll < mix.stranger;
+    const fig = buildFigure(person);
+    congregants.set(seatIndex, fig);
+    root.add(fig);
+    return fig;
+  }
+
+  function releaseCongregant(seatIndex) {
+    const g = congregants.get(seatIndex);
+    if (!g) return;
+    root.remove(g);
+    congregants.delete(seatIndex);
+  }
 
   // Pew seats, computed once. Rebuilt only if the sanctuary moves.
   let seating = null;
@@ -49,6 +88,7 @@ export function createCrowd(sceneApi, state, visitors) {
 
   function update(dt) {
     const list = visitors.visitors;
+    const s = seats();
 
     for (const v of list) {
       const g = figures.acquire(v);
@@ -72,6 +112,31 @@ export function createCrowd(sceneApi, state, visitors) {
           g.userData.seated = true;
           continue;
         }
+      }
+
+      // Waiting in the vestibule: cluster outside the sanctuary
+      // door rather than standing on the threshold.
+      if (v.phase === 'vestibule' && s) {
+        if (!g.userData.vestibuleSpot) {
+          const room = state.rooms.find((r) => r.id === 'sanctuary');
+          const { approach } = doorAndApproach(room.id, room.x, room.y, room.rot || 0);
+          const base = tileToWorld(state, approach.x, approach.y);
+          const rng = bucketRng(`${playerId}:vest`, v.id);
+          g.userData.vestibuleSpot = {
+            x: base.x + (rng() - 0.5) * 2.4,
+            z: base.z + 0.6 + rng() * 1.6,
+          };
+        }
+        if (g.userData.seated) { g.userData.stand(); g.userData.seated = false; }
+        const spot = g.userData.vestibuleSpot;
+        g.position.set(spot.x, 0, spot.z);
+        g.rotation.y = s.transform.rotationY + Math.PI;   // looking in
+        g.userData.walk(dt, false);
+        const b = bubbleFor(v);
+        setBubbleState(b, false);
+        b.position.set(spot.x, g.userData.height + 0.5, spot.z);
+        b.visible = true;
+        continue;
       }
 
       // Anyone not seated stands normally.
@@ -103,6 +168,34 @@ export function createCrowd(sceneApi, state, visitors) {
       } else if (bubbles.has(v.id)) {
         bubbles.get(v.id).visible = false;
       }
+    }
+
+    // ---- Fill the pews from state ----
+    if (s) {
+      const mix = congregationMix(state);
+      const claimed = new Set(
+        list.filter((v) => v.phase === 'seated' && v.seatIndex !== undefined)
+            .map((v) => v.seatIndex)
+      );
+      const needed = Math.max(0, (state.sanctuary.seated || 0) - claimed.size);
+
+      const standIns = [];
+      for (let i = 0; i < s.slots.length && standIns.length < needed; i++) {
+        if (!claimed.has(i)) standIns.push(i);
+      }
+
+      for (const i of standIns) {
+        const fig = congregantFor(i, mix);
+        const slot = s.slots[i];
+        const w = localToWorld(s.transform, slot);
+        const pose = fig.userData.sit(slot.facing);
+        fig.position.x = w.x;
+        fig.position.z = w.z;
+        fig.rotation.y = s.transform.rotationY + pose.extraYaw;
+      }
+
+      const wanted = new Set(standIns);
+      for (const i of [...congregants.keys()]) if (!wanted.has(i)) releaseCongregant(i);
     }
 
     figures.reconcile(list);
@@ -148,5 +241,13 @@ export function createCrowd(sceneApi, state, visitors) {
     return out;
   }
 
-  return { root, update, candidates, get figureCount() { return figures.size; } };
+  return {
+    root, update, candidates,
+    get figureCount() { return figures.size + congregants.size; },
+    /** The sanctuary moved — recompute seats and clear stand-ins. */
+    resetSeating() {
+      seating = null;
+      for (const i of [...congregants.keys()]) releaseCongregant(i);
+    },
+  };
 }

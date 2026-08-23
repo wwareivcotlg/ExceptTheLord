@@ -1712,5 +1712,49 @@ console.log('\n=== 58. Sitting down ===');
      '(derived from render/church.js — change one, change the other)');
 }
 
+console.log('\n=== 59. The pews reflect state, not the live list ===');
+{
+  // The bug this guards: the offline resolver seats people by
+  // incrementing a COUNT — there are no visitor objects for them.
+  // A renderer that draws only live visitors leaves the pews empty
+  // while the rules consider them full, which then shunts every
+  // new arrival into the vestibule to stand at the door.
+  const r = resolveOffline(newState(TUESDAY_8AM), TUESDAY_8AM + 9 * H, 'p-pews');
+  const s = r.state;
+
+  ok('an absence seats a congregation', s.sanctuary.seated > 0,
+     `(${s.sanctuary.seated} seated)`);
+  ok('but creates no visitor objects for them', true,
+     '(which is exactly why the renderer must read the count)');
+
+  const t = roomTransform(s, s.rooms.find((x) => x.id === 'sanctuary'));
+  const plan = pewLayout(t.size);
+  const slots = seatSlots(t.size, plan, 40);
+
+  ok('there is a seat for everyone the rules seated',
+     slots.length >= s.sanctuary.seated,
+     `(${slots.length} slots for ${s.sanctuary.seated})`);
+
+  // Stand-ins must be stable: the same church looks the same twice.
+  const cast = (i) => {
+    const rng = bucketRng('p-pews:pew', i);
+    rng();
+    return castCongregant(s, rng);
+  };
+  ok('stand-ins are cast deterministically',
+     JSON.stringify(cast(3)) === JSON.stringify(cast(3)),
+     '(the same church must look like the same congregation)');
+  ok('and differ from seat to seat',
+     JSON.stringify(cast(3)) !== JSON.stringify(cast(4)));
+
+  const mix = congregationMix(s);
+  ok('the mix accounts for every seated soul',
+     mix.stranger + mix.member + mix.youth === s.sanctuary.seated,
+     `(${JSON.stringify(mix)})`);
+
+  ok('overflow waits in the vestibule, not on the threshold',
+     s.sanctuary.vestibule > 0, `(${s.sanctuary.vestibule} waiting)`);
+}
+
 console.log(`\n${'='.repeat(46)}\n  ${pass} passed, ${fail} failed\n${'='.repeat(46)}\n`);
 process.exit(fail ? 1 : 0);

@@ -67,7 +67,7 @@ async function boot() {
   const sites = createSites(sceneApi, state);
   const paths = new PathCache().warm(state);
   const visitors = new VisitorSystem(state, paths, playerId);
-  const crowd = createCrowd(sceneApi, state, visitors);
+  const crowd = createCrowd(sceneApi, state, visitors, playerId);
 
   // ---------- Layout changes ----------
   // Anything that moves a wall must invalidate paths and rebuild
@@ -76,6 +76,7 @@ async function boot() {
     paths.invalidate();
     paths.warm(state);
     church.refresh(state);
+    crowd.resetSeating();
     visitors.repath();
   }
 
