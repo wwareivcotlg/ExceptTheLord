@@ -25,7 +25,7 @@ python3 -m http.server 8000
 # then open http://localhost:8000
 ```
 
-**Tests** (607 assertions, no browser required):
+**Tests** (631 assertions, no browser required):
 
 ```bash
 node test/offline.test.js
@@ -184,6 +184,22 @@ benches x 3 seats = 18. Capping the rules below that stranded one person alone o
 the back bench; capping above it would leave people with nowhere to render. And
 `seatCapacity()` counts pews plus folding chairs, so the renderer reads
 `allSeatSlots()` — pews first, then chairs — or everyone on a chair is invisible.
+
+**Changing a room definition does not change existing saves.** Raising the
+sanctuary from 16 seats to 18 fixed new games and did nothing for one already in
+progress — the old count was written on the room. Anything derived from a
+definition and then STORED needs both a migration and a helper that takes the
+larger of the two, so a missed migration cannot shrink what a player already had.
+
+**Every seat carries its own height.** A folding chair sits lower than a pew, so
+`seatTop` travels with the slot. Without it everyone sat at pew height regardless
+of what they were on, which left the folding-chair congregation in mid-air.
+
+**Facing is expressed in exactly one place.** `seatedPose()` used to apply it
+twice — once in `legZ` and again in `extraYaw`. Both signs agreed for the
+congregation so it looked correct, but they cancelled for the pastor and sat him
+with his back to the pews. `legZ` is now always the figure's own local forward;
+`extraYaw` is the only turn. A test asserts `legZ` does not vary with facing.
 
 **Orientation runs both ways, and the chancel is the opposite of the pews.**
 The congregation faces the chancel; everyone standing on it — preacher, pastor,

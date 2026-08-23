@@ -59,11 +59,27 @@
   /* --- HUD --- */
   #hud {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
-    display: flex; align-items: center; gap: .5rem;
-    padding: .7rem max(.9rem, env(safe-area-inset-left)) max(.9rem, env(safe-area-inset-bottom));
-    background: linear-gradient(transparent, rgba(23,19,63,.86) 45%);
+    display: flex; flex-direction: column; gap: .45rem;
+    padding: .7rem 0 max(.9rem, env(safe-area-inset-bottom));
+    background: linear-gradient(transparent, rgba(23,19,63,.88) 40%);
     pointer-events: none;
   }
+  #statusrow {
+    display: flex; align-items: baseline; gap: .6rem;
+    padding: 0 max(.9rem, env(safe-area-inset-left));
+  }
+  /* The tool row scrolls sideways. Six buttons do not fit across a
+     phone, and anything past the edge was simply unreachable. */
+  #tools {
+    display: flex; gap: .5rem;
+    overflow-x: auto; overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none; -ms-overflow-style: none;
+    padding: .1rem max(.9rem, env(safe-area-inset-left));
+    pointer-events: auto;
+  }
+  #tools::-webkit-scrollbar { display: none; }
+  #tools button { flex: 0 0 auto; scroll-snap-align: start; }
   /* --- Resource strip --- */
   #purse {
     position: fixed; top: 0; left: 0; right: 0; z-index: 10;
@@ -91,7 +107,8 @@
   /* --- Build sheet --- */
   #sheet, #sermonSheet, #ministrySheet, #arrangeSheet {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 15;
-    max-height: 62dvh; overflow-y: auto;
+    max-height: 62dvh; overflow-y: auto; overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
     padding: .9rem .9rem max(1.1rem, env(safe-area-inset-bottom));
     background: #241F5C;
     border-top: 1px solid rgba(239,231,216,.16);
@@ -204,7 +221,7 @@
 
   /* --- Service call-to-action --- */
   #service {
-    position: fixed; left: 50%; bottom: 4.6rem; z-index: 14;
+    position: fixed; left: 50%; bottom: 5.8rem; z-index: 14;
     transform: translateX(-50%) translateY(1rem);
     display: none; flex-direction: column; align-items: center; gap: .25rem;
     padding: .7rem 1.1rem; border-radius: 14px;
@@ -223,7 +240,7 @@
 
   /* --- Folding chairs --- */
   #prayer {
-    position: fixed; left: 50%; bottom: 12.6rem; z-index: 13;
+    position: fixed; left: 50%; bottom: 13.8rem; z-index: 13;
     transform: translateX(-50%) translateY(.6rem);
     display: none; align-items: center; gap: .6rem;
     padding: .55rem .7rem .55rem .9rem; border-radius: 999px;
@@ -236,7 +253,7 @@
   #prayer button { font-size: .68rem; padding: .4rem .7rem; }
 
   #chairs {
-    position: fixed; left: 50%; bottom: 9.4rem; z-index: 13;
+    position: fixed; left: 50%; bottom: 10.6rem; z-index: 13;
     transform: translateX(-50%) translateY(.6rem);
     display: none; align-items: center; gap: .6rem;
     padding: .55rem .7rem .55rem .9rem; border-radius: 999px;
@@ -320,14 +337,18 @@
   </div>
 
   <div id="hud">
-    <span id="status">Opening the doors…</span>
-    <span id="build" title="Running build">—</span>
-    <button id="openBuild" type="button">Build</button>
-    <button id="openMinistries" type="button">Ministries</button>
-    <button id="openArrange" type="button">Arrange</button>
-    <button id="reopenAway" type="button" title="While you were away">Away</button>
-    <button id="turn" type="button">Turn</button>
-    <button id="recenter" type="button">Recenter</button>
+    <div id="statusrow">
+      <span id="status">Opening the doors…</span>
+      <span id="build" title="Running build">—</span>
+    </div>
+    <div id="tools">
+      <button id="openBuild" type="button">Build</button>
+      <button id="openMinistries" type="button">Ministries</button>
+      <button id="openArrange" type="button">Arrange</button>
+      <button id="reopenAway" type="button" title="While you were away">Away</button>
+      <button id="turn" type="button">Turn</button>
+      <button id="recenter" type="button">Recenter</button>
+    </div>
   </div>
 
   <div id="sheet">

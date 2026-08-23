@@ -10,11 +10,11 @@ import { FigurePool, buildFigure } from './characters.js';
 import { createBubble, setBubbleState, createPayoutPopup, stepPopup,
          createNameplate } from './bubble.js';
 import { tileToWorld, roomTransform, pewLayout, allSeatSlots, localToWorld,
-         seatedPose } from './layout.js';
+         seatedPose, CHAIR_SEAT_Y } from './layout.js';
 import { projectPoint } from './picking.js';
 import { castCongregant } from '../core/casting.js';
 import { bucketRng } from '../core/rng.js';
-import { congregationMix } from '../core/sanctuary.js';
+import { congregationMix, baseSeats } from '../core/sanctuary.js';
 import { doorAndApproach } from '../core/grid.js';
 
 const MOVING = new Set(['walking_in', 'leaving']);
@@ -81,7 +81,7 @@ export function createCrowd(sceneApi, state, visitors, playerId = 'local', onEve
     seating = {
       transform: t,
       tempSeats,
-      slots: allSeatSlots(t.size, plan, { pews: room.seats ?? 18, tempSeats }),
+      slots: allSeatSlots(t.size, plan, { pews: baseSeats(state), tempSeats }),
     };
     return seating;
   }
@@ -109,9 +109,63 @@ export function createCrowd(sceneApi, state, visitors, playerId = 'local', onEve
     return p;
   }
 
+  // ---- Folding chair meshes ----
+  // Chair slots are only positions. Without something to sit on,
+  // anyone the deacons seated is sitting in mid-air.
+  const chairMeshes = new Map();   // slot index → mesh
+  const chairSeatMat = new THREE.MeshLambertMaterial({ color: 0x4a4f5c });
+  const chairFrameMat = new THREE.MeshLambertMaterial({ color: 0x8f959e });
+
+  function buildChair() {
+    const g = new THREE.Group();
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.05, 0.42), chairSeatMat);
+    seat.position.y = CHAIR_SEAT_Y - 0.025;
+    const back = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.04), chairSeatMat);
+    back.position.set(0, CHAIR_SEAT_Y + 0.21, -0.19);
+    const legGeo = new THREE.BoxGeometry(0.04, CHAIR_SEAT_Y, 0.04);
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        const leg = new THREE.Mesh(legGeo, chairFrameMat);
+        leg.position.set(sx * 0.17, CHAIR_SEAT_Y / 2, sz * 0.17);
+        leg.castShadow = true;
+        g.add(leg);
+      }
+    }
+    seat.castShadow = back.castShadow = true;
+    seat.receiveShadow = true;
+    g.add(seat, back);
+    return g;
+  }
+
+  function syncChairs(s) {
+    const wanted = new Set();
+    if (s) {
+      s.slots.forEach((slot, i) => { if (slot.chair) wanted.add(i); });
+    }
+    for (const i of wanted) {
+      if (chairMeshes.has(i)) continue;
+      const slot = s.slots[i];
+      const mesh = buildChair();
+      const w = localToWorld(s.transform, slot);
+      mesh.position.set(w.x, 0.06, w.z);
+      // The back is behind the sitter, who faces the chancel.
+      mesh.rotation.y = s.transform.rotationY + (slot.facing < 0 ? 0 : Math.PI);
+      root.add(mesh);
+      chairMeshes.set(i, mesh);
+    }
+    for (const i of [...chairMeshes.keys()]) {
+      if (wanted.has(i)) continue;
+      const mesh = chairMeshes.get(i);
+      root.remove(mesh);
+      mesh.traverse((c) => c.geometry?.dispose?.());
+      chairMeshes.delete(i);
+    }
+  }
+
   function update(dt) {
     const list = visitors.visitors;
     const s = seats();
+    syncChairs(s);
 
     for (const v of list) {
       const g = figures.acquire(v);
@@ -124,7 +178,7 @@ export function createCrowd(sceneApi, state, visitors, playerId = 'local', onEve
           const w = localToWorld(s.transform, slot);
           // sit() sets the height itself — calling walk() here used
           // to reset position.y to 0 and stand everyone on the floor.
-          const pose = g.userData.sit(slot.facing);
+          const pose = g.userData.sit(slot.facing, slot.seatTop);
           g.position.x = w.x;
           g.position.z = w.z;
           g.rotation.y = s.transform.rotationY + pose.extraYaw;
@@ -211,7 +265,7 @@ export function createCrowd(sceneApi, state, visitors, playerId = 'local', onEve
         const fig = congregantFor(i, mix);
         const slot = s.slots[i];
         const w = localToWorld(s.transform, slot);
-        const pose = fig.userData.sit(slot.facing);
+        const pose = fig.userData.sit(slot.facing, slot.seatTop);
         fig.position.x = w.x;
         fig.position.z = w.z;
         fig.rotation.y = s.transform.rotationY + pose.extraYaw;
@@ -307,6 +361,12 @@ export function createCrowd(sceneApi, state, visitors, playerId = 'local', onEve
       seating = null;
       for (const i of [...congregants.keys()]) releaseCongregant(i);
       for (const g of figures.active.values()) delete g.userData.vestibuleSpot;
+      for (const i of [...chairMeshes.keys()]) {
+        const mesh = chairMeshes.get(i);
+        root.remove(mesh);
+        mesh.traverse((c) => c.geometry?.dispose?.());
+        chairMeshes.delete(i);
+      }
     },
   };
 }

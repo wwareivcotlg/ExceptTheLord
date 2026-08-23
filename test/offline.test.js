@@ -11,7 +11,8 @@ import { rotatedSize, rotateLocal, rotateFacing, footprintTiles, doorAndApproach
 import { findPath, PathCache, distanceToRoom } from '../src/sim/pathfinding.js';
 import { tileToWorld, roomTransform, floorExtent, pathToWorld, cameraFrame,
          pewLayout, chairSlots, seatSlots, allSeatSlots, chancelLayout,
-         localToWorld, seatedPose, SEAT_TOP_Y, TILE } from '../src/render/layout.js';
+         localToWorld, seatedPose, SEAT_TOP_Y, CHAIR_SEAT_Y,
+         TILE } from '../src/render/layout.js';
 import { PALETTE, LIGHTING, QUALITY } from '../src/render/palette.js';
 import { readFileSync } from 'node:fs';
 import { VisitorSystem, WALK_SPEED, AUTO_SERVE_DELAY, SERVE_DURATION } from '../src/sim/visitors.js';
@@ -1725,12 +1726,29 @@ console.log('\n=== 58. Sitting down ===');
      Math.abs(pose.groupY + legH - SEAT_TOP_Y) < 1e-9,
      `(hips ${(pose.groupY + legH).toFixed(3)}, seat ${SEAT_TOP_Y})`);
   ok('the thighs fold horizontal', Math.abs(pose.legRotX + Math.PI / 2) < 1e-9);
-  ok('and fold FORWARD, toward the chancel', pose.legZ < 0,
+  ok('and fold along the figure\'s own forward', pose.legZ < 0,
      '(legs folding backward reads as kneeling on the pew)');
+
+  // THE BUG THIS CATCHES: facing was applied twice — once in legZ
+  // and again in extraYaw. Both signs agreed for the congregation
+  // so it looked fine, but they cancelled for the pastor and sat
+  // him with his back to the pews.
+  const worldLegZ = (p) => (p.extraYaw === 0 ? p.legZ : -p.legZ);
+  for (const facing of [-1, 1]) {
+    const q = seatedPose(legH, facing);
+    ok(`someone facing ${facing > 0 ? '+z' : '-z'} has legs pointing the same way`,
+       Math.sign(worldLegZ(q)) === facing,
+       `(legs ${worldLegZ(q).toFixed(2)} vs facing ${facing})`);
+  }
+  ok('facing is expressed in exactly one place',
+     seatedPose(legH, -1).legZ === seatedPose(legH, 1).legZ,
+     '(legZ must not vary with facing — extraYaw is the only turn)');
 
   ok('a congregation facing -z needs no extra half turn',
      pose.extraYaw === 0,
      '(the figure already faces -z; adding PI aims it at the back wall)');
+  ok('the pastor, who faces the other way, does get one',
+     seatedPose(legH, 1).extraYaw === Math.PI);
   ok('the opposite facing does get one', seatedPose(legH, 1).extraYaw === Math.PI);
 
   // Different builds sit at the same height.
@@ -2407,6 +2425,15 @@ console.log('\n=== 78. The pastor always faces the people ===');
   ok('he never turns his back on the pews, in any phase',
      phases.every((p) => p.pose.facing === -plan.facing),
      `(${phases.map((p) => `${p.phase}:${p.pose.facing}`).join(' ')})`);
+
+  // Facing the right way in the DATA is not enough — the seated
+  // pose has to end up pointing there once rendered.
+  const seatedPhase = phases.find((p) => p.phase === 'seated');
+  const sit = seatedPose(1.72 * 0.44, seatedPhase.pose.facing);
+  const worldLegZ = sit.extraYaw === 0 ? sit.legZ : -sit.legZ;
+  ok('and in his chair his knees point at the congregation',
+     Math.sign(worldLegZ) === -plan.facing,
+     '(he sat facing the wall while the data said otherwise)');
   ok('every phase was covered', phases.length === 6);
 
   // And the congregation is looking back at him.
@@ -2608,6 +2635,108 @@ console.log('\n=== 84. A build can be called off ===');
   ok('and the site is gone', s.construction.length === 0);
   ok('the room can then be built somewhere else',
      startConstruction(s, 'fellowship_hall', spot.x, spot.y, 0, TUESDAY_8AM).ok);
+}
+
+console.log('\n=== 85. Nobody sits in mid-air ===');
+{
+  const s = newState(TUESDAY_8AM);
+  const room = s.rooms.find((r) => r.id === 'sanctuary');
+  const t = roomTransform(s, room);
+  const plan = pewLayout(t.size);
+  const slots = allSeatSlots(t.size, plan, { pews: room.seats, tempSeats: 6 });
+
+  ok('every seat says how high it is',
+     slots.every((x) => typeof x.seatTop === 'number' && x.seatTop > 0),
+     '(without it everyone sits at pew height, whatever they are on)');
+  ok('a folding chair is lower than a pew', CHAIR_SEAT_Y < SEAT_TOP_Y,
+     `(${CHAIR_SEAT_Y} vs ${SEAT_TOP_Y})`);
+  ok('pew seats use pew height',
+     slots.filter((x) => !x.chair).every((x) => x.seatTop === SEAT_TOP_Y));
+  ok('chair seats use chair height',
+     slots.filter((x) => x.chair).every((x) => x.seatTop === CHAIR_SEAT_Y));
+
+  const legH = 1.72 * 0.44;
+  const onPew = seatedPose(legH, plan.facing, SEAT_TOP_Y);
+  const onChair = seatedPose(legH, plan.facing, CHAIR_SEAT_Y);
+  ok('someone on a chair sits lower than someone on a pew',
+     onChair.groupY < onPew.groupY);
+  ok('and their hips land on the chair, not above it',
+     Math.abs(onChair.groupY + legH - CHAIR_SEAT_Y) < 1e-9);
+  ok('an omitted seat height still defaults to the pew',
+     seatedPose(legH, plan.facing).groupY === onPew.groupY);
+}
+
+console.log('\n=== 86. Prompts get out of the way ===');
+{
+  const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+
+  ok('the chairs prompt hides itself once the chairs are out',
+     /\$\('chairs'\)\.classList\.remove\('on'\)/.test(main));
+  ok('the prayer prompt hides itself once the meeting is held',
+     /\$\('prayer'\)\.classList\.remove\('on'\)/.test(main));
+
+  ok('the tool row scrolls sideways',
+     /#tools\s*\{[^}]*overflow-x:\s*auto/s.test(html),
+     '(six buttons do not fit — anything past the edge was unreachable)');
+  ok('and its buttons do not shrink to fit',
+     /#tools button\s*\{[^}]*flex:\s*0 0 auto/s.test(html));
+  ok('the sheets scroll too',
+     /max-height:\s*62dvh;\s*overflow-y:\s*auto/.test(html));
+  ok('and do not drag the page with them',
+     /overscroll-behavior:\s*contain/.test(html));
+  ok('every tool button lives in the scrolling row', (() => {
+    const row = html.match(/<div id="tools">([\s\S]*?)<\/div>/);
+    return row && ['openBuild', 'openMinistries', 'openArrange', 'reopenAway',
+                   'turn', 'recenter'].every((id) => row[1].includes(id));
+  })());
+}
+
+console.log('\n=== 87. A stale save cannot shrink the pews ===');
+{
+  // The bug: baseSeats was raised from 16 to 18 in the room
+  // DEFINITION, but existing saves kept 16 written on the room. Two
+  // seats never filled, and one person sat alone on the back-right
+  // bench — in a running game, with every test passing.
+  const old = {
+    v: 4,
+    lastSavedAt: TUESDAY_8AM,
+    level: 3, xp: 0, rank: 'mission',
+    grid: { w: 15, h: 12, entrance: { x: 7, y: 11 } },
+    rooms: [{ id: 'sanctuary', x: 4, y: 0, rot: 0, level: 1, seats: 16 }],
+    currency: { offering: 100, favor: 0, supplies: { food: 0, clothing: 0 } },
+    ministries: [], buffs: [], construction: [], workers: [],
+    sanctuary: { seated: 0, vestibule: 0, tempSeats: 0 },
+    queue: [], characters: {}, stats: {},
+  };
+
+  const m = migrate(old);
+  ok('the migration raises stored seating to the definition',
+     m.rooms[0].seats === ROOMS.find((r) => r.id === 'sanctuary').baseSeats,
+     `(16 → ${m.rooms[0].seats})`);
+  ok('and the save reports the current version', m.v === TUNING.CURRENT_VERSION);
+
+  // Even unmigrated, the helper must not report the stale number.
+  ok('baseSeats never falls below the room definition',
+     baseSeats({ rooms: [{ id: 'sanctuary', seats: 16 }] }) ===
+     ROOMS.find((r) => r.id === 'sanctuary').baseSeats,
+     '(self-healing, so a missed migration cannot shrink the pews)');
+  ok('but a genuine upgrade above the base is respected',
+     baseSeats({ rooms: [{ id: 'sanctuary', seats: 40 }] }) === 40);
+
+  // And the whole point: every bench fills.
+  const t = roomTransform(m, m.rooms[0]);
+  const plan = pewLayout(t.size);
+  const slots = allSeatSlots(t.size, plan, { pews: baseSeats(m) });
+  const per = {};
+  for (let i = 0; i < baseSeats(m); i++) {
+    const key = `${slots[i].z.toFixed(2)}|${slots[i].side}`;
+    per[key] = (per[key] || 0) + 1;
+  }
+  const counts = Object.values(per);
+  ok('a full house fills every bench evenly, migrated save included',
+     counts.length === 6 && counts.every((c) => c === 3),
+     `(${counts.join(',')})`);
 }
 
 console.log(`\n${'='.repeat(46)}\n  ${pass} passed, ${fail} failed\n${'='.repeat(46)}\n`);

@@ -113,8 +113,8 @@ export function buildFigure(composition) {
   const standing = legs.map((l) => ({ y: l.position.y, z: l.position.z }));
 
   /** Sit on a pew: hips to the seat, thighs forward. */
-  group.userData.sit = (facing = -1) => {
-    const pose = seatedPose(legH, facing);
+  group.userData.sit = (facing = -1, seatTop = undefined) => {
+    const pose = seatedPose(legH, facing, seatTop);
     legs.forEach((leg, i) => {
       leg.rotation.x = pose.legRotX;
       leg.position.y = pose.legY;

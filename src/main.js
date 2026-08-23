@@ -488,6 +488,7 @@ async function boot() {
     const now = serverNow();
     const res = holdPrayerMeeting(state, now);
     if (!res.ok) return;
+    $('prayer').classList.remove('on');
     visitors.concludePrayer(now);
     status.textContent =
       `One Elder, ${res.served} souls prayed for. +${money(res.offering)} offering, +${res.favor} favor.`;
@@ -502,32 +503,17 @@ async function boot() {
     const panel = $('chairs');
     const st = chairStatus(state, now);
 
-    const worthOffering = st.waiting > 0 || st.reason === 'cooldown' || st.reason === 'cannot_afford';
-    if (!worthOffering || st.reason === 'not_needed') {
-      panel.classList.remove('on');
-      return;
-    }
+    // Only show it when there is something to DO. Once the chairs
+    // are out, or stored on cooldown, the prompt has no action left
+    // and should get out of the way.
+    const actionable = st.waiting > 0 &&
+      (st.canDeploy || st.reason === 'cannot_afford');
+    if (!actionable) { panel.classList.remove('on'); return; }
     panel.classList.add('on');
 
-    const waiting = st.waiting === 1
+    $('chairs-waiting').textContent = st.waiting === 1
       ? '1 waiting in the vestibule'
       : `${st.waiting} waiting in the vestibule`;
-
-    if (st.reason === 'cooldown') {
-      const mins = Math.ceil(st.cooldownRemainingMs / 60000);
-      $('chairs-waiting').textContent = `${waiting} · chairs ready in ${mins}m`;
-      $('chairs-go').disabled = true;
-      $('chairs-go').textContent = 'Chairs stored';
-      return;
-    }
-    if (st.reason === 'already_out') {
-      $('chairs-waiting').textContent = `${waiting} · chairs are out`;
-      $('chairs-go').disabled = true;
-      $('chairs-go').textContent = 'Chairs out';
-      return;
-    }
-
-    $('chairs-waiting').textContent = waiting;
     $('chairs-go').disabled = !st.canDeploy;
     $('chairs-go').textContent = st.canDeploy
       ? `Bring out ${st.count} chairs · ${money(st.cost)}`
@@ -537,6 +523,7 @@ async function boot() {
   $('chairs-go').addEventListener('click', () => {
     const res = deployFoldingChairs(state, serverNow());
     if (!res.ok) return;
+    $('chairs').classList.remove('on');   // done — get out of the way
     status.textContent =
       `The deacons set out ${res.chairs} chairs. ${res.seated} came in from the vestibule.`;
     save();

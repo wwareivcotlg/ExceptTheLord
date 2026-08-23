@@ -74,12 +74,16 @@ export function createPastor(sceneApi, state, playerId = 'local') {
 
       const pose = pastorPose(state, p.chancel, atMs);
       const w = localToWorld(p.transform, { x: pose.x, z: pose.z });
+      let extraYaw = pose.facing < 0 ? 0 : Math.PI;
 
       switch (pose.action) {
         case 'sit': {
           // Seated on the chair, which stands on the platform.
           const lift = p.chancel.chair.seatY;
           const sit = figure.userData.sit(pose.facing);
+          // Take the turn from the pose itself — recomputing the
+          // rule in a second place is how it drifted before.
+          extraYaw = sit.extraYaw;
           figure.position.set(w.x, sit.groupY + lift, w.z);
           break;
         }
@@ -100,7 +104,7 @@ export function createPastor(sceneApi, state, playerId = 'local') {
           figure.position.set(w.x, p.chancel.platform.h, w.z);
       }
 
-      figure.rotation.y = p.transform.rotationY + (pose.facing < 0 ? 0 : Math.PI);
+      figure.rotation.y = p.transform.rotationY + extraYaw;
     },
     /** The sanctuary moved. */
     reset() {

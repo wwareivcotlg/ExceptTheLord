@@ -202,6 +202,7 @@ export function seatSlots(size, plan, capacity, { seatPitch = 0.45 } = {}) {
           z: bench.z,
           facing: plan.facing,      // everyone looks toward the chancel
           side: bench.side,
+          seatTop: SEAT_TOP_Y,
         });
       }
     }
@@ -213,6 +214,10 @@ export function seatSlots(size, plan, capacity, { seatPitch = 0.45 } = {}) {
 // Top surface of a pew seat, in room-local units. Derived from the
 // pew mesh in render/church.js — if that changes, change this.
 export const SEAT_TOP_Y = 0.58;
+
+// A folding chair sits lower than a pew. Anyone placed on one has
+// to sit at THIS height, or they float above it.
+export const CHAIR_SEAT_Y = 0.46;
 
 /**
  * How a figure is posed when sitting.
@@ -227,15 +232,23 @@ export const SEAT_TOP_Y = 0.58;
  * @param {number} facing     -1 when the congregation looks toward -z
  */
 export function seatedPose(legHeight, facing = -1, seatTop = SEAT_TOP_Y) {
+  if (seatTop === undefined) seatTop = SEAT_TOP_Y;
   return {
     // Drop the whole figure until its hips rest on the seat.
     groupY: seatTop - legHeight,
-    // Thighs run horizontally out from the hip, in the facing direction.
+
+    // Thighs run horizontally out from the hip, along the figure's
+    // OWN forward, which is always local -z. Facing is expressed
+    // once, by extraYaw, and applying it here too cancels it out:
+    // the congregation happened to survive that because both signs
+    // agreed, but the pastor — who faces the other way — ended up
+    // sitting with his back to the pews.
     legRotX: -Math.PI / 2,
     legY: legHeight * 0.95,
-    legZ: facing * legHeight * 0.42,
-    // The figure's own forward is -z, so a congregation facing -z
-    // needs NO extra half turn. Adding one aims them at the back wall.
+    legZ: -legHeight * 0.42,
+
+    // The one place facing is applied. The figure's own forward is
+    // -z, so facing -z needs no turn and facing +z needs a half one.
     extraYaw: facing < 0 ? 0 : Math.PI,
   };
 }
@@ -257,9 +270,11 @@ export function chairSlots(size, plan, count, { chairPitch = 0.55 } = {}) {
 
   for (let i = 0; i < perSide && slots.length < count; i++) {
     const z = zStart + i * chairPitch;
-    slots.push({ x: -x, z, side: 'left', facing: plan.facing, chair: true });
+    slots.push({ x: -x, z, side: 'left', facing: plan.facing,
+                 chair: true, seatTop: CHAIR_SEAT_Y });
     if (slots.length < count) {
-      slots.push({ x, z, side: 'right', facing: plan.facing, chair: true });
+      slots.push({ x, z, side: 'right', facing: plan.facing,
+                   chair: true, seatTop: CHAIR_SEAT_Y });
     }
   }
   return slots;

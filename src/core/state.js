@@ -41,6 +41,20 @@ export function newState(nowMs, schedule = DEFAULT_SCHEDULE) {
 // returning after eight months needs the whole chain.
 // ------------------------------------------------------------
 const MIGRATIONS = {
+  // v5: the pews were widened from 16 seats to 18 to match the
+  // geometry, but existing saves kept the old count on the room —
+  // so two seats never filled and one person sat alone on the
+  // back-right bench. Raise any room whose stored capacity has
+  // fallen behind its definition.
+  5: (s) => ({
+    ...s,
+    rooms: (s.rooms || []).map((r) => {
+      const def = ROOM_BY_ID[r.id];
+      if (!def?.baseSeats) return r;
+      return { ...r, seats: Math.max(r.seats ?? 0, def.baseSeats) };
+    }),
+  }),
+
   // v4 introduced the weekly rhythm as a player choice. Existing
   // saves keep the default days and are treated as onboarded —
   // interrupting a returning player to ask would be rude.

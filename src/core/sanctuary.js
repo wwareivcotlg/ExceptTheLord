@@ -14,10 +14,19 @@ import { TUNING } from '../data/tuning.js';
 import { ROOM_BY_ID } from '../data/rooms.js';
 import { resolveModifiers } from './modifiers.js';
 
-/** Permanent seats from the sanctuary room itself. */
+/**
+ * Permanent seats from the sanctuary room itself.
+ *
+ * Takes the LARGER of what the save stores and what the room
+ * definition says. A save written before the pews were widened
+ * still carried the old count, which left one person alone on the
+ * back bench; taking the max heals that on load while still
+ * allowing a future upgrade to raise seating above the base.
+ */
 export function baseSeats(state) {
   const sanctuary = state.rooms.find((r) => r.id === 'sanctuary');
-  return sanctuary?.seats ?? ROOM_BY_ID.sanctuary.baseSeats;
+  const defined = ROOM_BY_ID.sanctuary.baseSeats;
+  return Math.max(sanctuary?.seats ?? 0, defined);
 }
 
 /** Permanent seats + any folding chairs currently out. */

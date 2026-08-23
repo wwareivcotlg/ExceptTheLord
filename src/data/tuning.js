@@ -85,5 +85,5 @@ export const TUNING = {
 
   // --- Save ---
   SAVE_DEBOUNCE_MS: 5000,
-  CURRENT_VERSION: 4,
+  CURRENT_VERSION: 5,
 };
