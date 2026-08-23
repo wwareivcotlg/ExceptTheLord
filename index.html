@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#3C3489">
+<title>Except the Lord Build the House</title>
+<link rel="manifest" href="manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Archivo:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --purple: #3C3489;
+    --purple-deep: #241F5C;
+    --gold: #B87A00;
+    --gold-light: #E4B23F;
+    --plaster: #EFE7D8;
+    --ink: #221C14;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: var(--purple-deep);
+    font-family: Archivo, system-ui, sans-serif;
+    color: var(--plaster);
+    overscroll-behavior: none;
+  }
+  #stage { display: block; width: 100vw; height: 100dvh; touch-action: none; }
+
+  /* --- Loading veil --- */
+  #veil {
+    position: fixed; inset: 0; z-index: 20;
+    display: grid; place-content: center; gap: .9rem; text-align: center;
+    padding: 2rem;
+    background: radial-gradient(120% 90% at 50% 15%, #4A409F 0%, var(--purple-deep) 62%, #17133F 100%);
+    transition: opacity .7s ease, visibility .7s;
+  }
+  #veil.gone { opacity: 0; visibility: hidden; }
+  #veil h1 {
+    margin: 0;
+    font-family: Fraunces, Georgia, serif;
+    font-weight: 800;
+    font-size: clamp(1.9rem, 8vw, 3.1rem);
+    line-height: 1.02;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+  }
+  #veil h1 em { font-style: normal; color: var(--gold-light); display: block; }
+  #veil p {
+    margin: 0; max-width: 30ch; justify-self: center;
+    font-size: .82rem; line-height: 1.6; opacity: .72;
+  }
+  .rule {
+    width: 3.5rem; height: 2px; justify-self: center;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  }
+
+  /* --- HUD --- */
+  #hud {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+    display: flex; align-items: center; gap: .5rem;
+    padding: .7rem max(.9rem, env(safe-area-inset-left)) max(.9rem, env(safe-area-inset-bottom));
+    background: linear-gradient(transparent, rgba(23,19,63,.86) 45%);
+    pointer-events: none;
+  }
+  /* --- Resource strip --- */
+  #purse {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+    display: flex; gap: .9rem; align-items: center;
+    padding: max(.6rem, env(safe-area-inset-top)) .9rem .6rem;
+    background: linear-gradient(rgba(23,19,63,.9), transparent);
+    font-size: .78rem; font-variant-numeric: tabular-nums;
+    pointer-events: none;
+  }
+  #purse b { font-weight: 600; }
+  #purse .coin { color: var(--gold-light); }
+  #purse .favor { color: #C9BFF5; }
+  #purse .sup { opacity: .7; }
+  #purse .lvl { margin-left: auto; display: flex; align-items: center; gap: .4rem; }
+  #bar {
+    width: 4.5rem; height: 4px; border-radius: 2px;
+    background: rgba(239,231,216,.2); overflow: hidden;
+  }
+  #bar i { display: block; height: 100%; background: var(--gold); width: 0; }
+
+  .eff { grid-column: 1; font-size: .7rem; color: #C9BFF5; line-height: 1.5; }
+  .founded { opacity: .55; }
+  .founded .price { color: var(--gold-light); }
+
+  /* --- Build sheet --- */
+  #sheet, #sermonSheet, #ministrySheet {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 15;
+    max-height: 62dvh; overflow-y: auto;
+    padding: .9rem .9rem max(1.1rem, env(safe-area-inset-bottom));
+    background: #241F5C;
+    border-top: 1px solid rgba(239,231,216,.16);
+    border-radius: 18px 18px 0 0;
+    transform: translateY(101%);
+    transition: transform .28s cubic-bezier(.2,.8,.3,1);
+  }
+  #sheet.open, #sermonSheet.open, #ministrySheet.open { transform: translateY(0); }
+  #sheet h2, #sermonSheet h2, #ministrySheet h2 {
+    margin: 0 0 .7rem; font-family: Fraunces, Georgia, serif;
+    font-size: 1.05rem; font-weight: 600; letter-spacing: -.01em;
+  }
+  .card {
+    display: grid; grid-template-columns: 1fr auto; gap: .2rem .8rem;
+    align-items: center; width: 100%; text-align: left;
+    padding: .7rem .8rem; margin-bottom: .5rem;
+    border-radius: 12px; border: 1px solid rgba(239,231,216,.14);
+    background: rgba(60,52,137,.5); color: var(--plaster);
+    font: inherit; cursor: pointer;
+  }
+  .card[disabled] { opacity: .42; cursor: default; }
+  .card .nm { font-weight: 600; font-size: .86rem; }
+  .card .meta { grid-column: 1; font-size: .7rem; opacity: .7; }
+  .card .price { grid-row: 1 / span 2; font-size: .8rem; text-align: right; white-space: nowrap; }
+  .card .price .coin { color: var(--gold-light); }
+
+  /* --- Today's rhythm. Nothing renders on an ordinary day. --- */
+  #today {
+    position: fixed; top: 2.6rem; left: 50%; transform: translateX(-50%);
+    z-index: 11; display: none; text-align: center; max-width: min(90vw, 24rem);
+    padding: .35rem .9rem; border-radius: 999px;
+    background: rgba(184,122,0,.16); border: 1px solid rgba(184,122,0,.45);
+    pointer-events: none;
+  }
+  #today.on { display: block; }
+  #today b {
+    font-family: Fraunces, Georgia, serif; font-size: .82rem;
+    color: var(--gold-light); letter-spacing: .01em;
+  }
+  #today span {
+    display: block; font-size: .64rem; opacity: .7;
+    font-family: Fraunces, Georgia, serif; line-height: 1.4;
+  }
+  #rehearsal {
+    display: inline-block; margin-left: .4rem; font-size: .6rem;
+    letter-spacing: .06em; text-transform: uppercase; opacity: .85;
+  }
+
+  /* --- While You Were Away --- */
+  #away {
+    position: fixed; left: 50%; top: 50%; z-index: 18;
+    transform: translate(-50%, -46%); opacity: 0;
+    display: none; width: min(92vw, 24rem); max-height: 78dvh; overflow-y: auto;
+    padding: 1.1rem 1.15rem 1rem;
+    background: #241F5C; border: 1px solid rgba(184,122,0,.4);
+    border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,.45);
+    transition: opacity .35s ease, transform .35s cubic-bezier(.2,.8,.3,1);
+  }
+  #away.on { display: block; opacity: 1; transform: translate(-50%, -50%); }
+  #away h2 {
+    margin: 0 0 .1rem; font-family: Fraunces, Georgia, serif;
+    font-size: 1.15rem; font-weight: 800; letter-spacing: -.01em;
+  }
+  #away .absence { font-size: .66rem; opacity: .55; letter-spacing: .04em; text-transform: uppercase; }
+  #away .headline {
+    margin: .55rem 0 .8rem; font-family: Fraunces, Georgia, serif;
+    font-size: .88rem; color: var(--gold-light); text-wrap: balance;
+  }
+  #away .tally {
+    display: flex; gap: 1rem; margin: .2rem 0 .85rem;
+    font-variant-numeric: tabular-nums;
+  }
+  #away .tally div { font-size: .68rem; opacity: .7; }
+  #away .tally b {
+    display: block; font-size: 1.15rem; font-weight: 600; opacity: 1;
+    font-family: Fraunces, Georgia, serif;
+  }
+  #away section { margin-bottom: .75rem; }
+  #away h3 {
+    margin: 0 0 .25rem; font-size: .62rem; letter-spacing: .09em;
+    text-transform: uppercase; opacity: .5; font-weight: 600;
+  }
+  #away li { font-size: .78rem; line-height: 1.65; list-style: none; }
+  #away ul { margin: 0; padding: 0; }
+  #away .hint { font-size: .68rem; opacity: .6; }
+  #away .row { display: flex; gap: .5rem; margin-top: .9rem; }
+  #ledger li { font-size: .72rem; opacity: .75; line-height: 1.7; }
+
+  /* --- Onboarding --- */
+  #welcome {
+    position: fixed; inset: 0; z-index: 30; display: none;
+    place-content: center; gap: 1rem; padding: 2rem 1.4rem;
+    background: radial-gradient(120% 90% at 50% 12%, #4A409F 0%, var(--purple-deep) 62%, #17133F 100%);
+    overflow-y: auto;
+  }
+  #welcome.on { display: grid; }
+  #welcome h2 {
+    margin: 0; font-family: Fraunces, Georgia, serif; font-weight: 800;
+    font-size: 1.5rem; text-wrap: balance; text-align: center;
+  }
+  #welcome p { margin: 0; font-size: .8rem; line-height: 1.6; opacity: .78; text-align: center; }
+  #welcome fieldset { border: 0; margin: 0; padding: 0; }
+  #welcome legend { font-size: .78rem; font-weight: 600; margin-bottom: .5rem; }
+  .days { display: flex; flex-wrap: wrap; gap: .35rem; }
+  .day {
+    flex: 1 0 auto; min-width: 3.2rem; padding: .5rem .3rem;
+    font-size: .7rem; text-align: center;
+  }
+  .day[aria-pressed="true"] { background: var(--gold); color: #191305; border-color: transparent; }
+
+  /* --- Service call-to-action --- */
+  #service {
+    position: fixed; left: 50%; bottom: 4.6rem; z-index: 14;
+    transform: translateX(-50%) translateY(1rem);
+    display: none; flex-direction: column; align-items: center; gap: .25rem;
+    padding: .7rem 1.1rem; border-radius: 14px;
+    background: rgba(36,31,92,.94); border: 1px solid rgba(184,122,0,.55);
+    box-shadow: 0 8px 30px rgba(0,0,0,.35);
+    opacity: 0; transition: opacity .3s, transform .3s;
+    text-align: center; max-width: min(92vw, 26rem);
+  }
+  #service.on { display: flex; opacity: 1; transform: translateX(-50%) translateY(0); }
+  #service .verse {
+    font-family: Fraunces, Georgia, serif; font-size: .8rem;
+    line-height: 1.4; text-wrap: balance;
+  }
+  #service .why { font-size: .68rem; opacity: .68; letter-spacing: .02em; }
+  #service .row { display: flex; gap: .45rem; margin-top: .35rem; }
+
+  /* --- Sermon sheet --- */
+  .sermon { display: block; }
+  .sermon .verse {
+    grid-column: 1; font-family: Fraunces, Georgia, serif;
+    font-size: .72rem; opacity: .75; line-height: 1.4; margin-top: .15rem;
+  }
+  .pick { outline: 1px solid var(--gold); }
+  .tag {
+    display: inline-block; font-size: .6rem; letter-spacing: .07em;
+    text-transform: uppercase; color: var(--gold-light);
+    border: 1px solid rgba(184,122,0,.5); border-radius: 999px;
+    padding: .08rem .4rem; margin-left: .4rem; vertical-align: middle;
+  }
+
+  /* --- Placement bar --- */
+  #place {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 16;
+    display: none; align-items: center; gap: .5rem;
+    padding: .8rem .9rem max(1rem, env(safe-area-inset-bottom));
+    background: #241F5C; border-top: 1px solid rgba(239,231,216,.16);
+  }
+  #place.on { display: flex; }
+  #place #why { flex: 1; min-width: 0; font-size: .74rem; }
+  #place #why.bad { color: #F0A79E; }
+  #place #why.good { color: var(--gold-light); }
+  button.primary {
+    background: var(--gold); border-color: transparent; color: #191305; font-weight: 600;
+  }
+  button.primary[disabled] { opacity: .4; }
+
+  #build {
+    font-size: .62rem; letter-spacing: .06em; text-transform: uppercase;
+    opacity: .45; white-space: nowrap; font-variant-numeric: tabular-nums;
+  }
+  #status {
+    flex: 1; min-width: 0;
+    font-size: .74rem; letter-spacing: .01em; opacity: .85;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  button {
+    pointer-events: auto;
+    font: inherit; font-size: .72rem; font-weight: 600;
+    color: var(--plaster);
+    padding: .5rem .8rem; border-radius: 999px;
+    border: 1px solid rgba(239,231,216,.22);
+    background: rgba(36,31,92,.72);
+    backdrop-filter: blur(6px);
+    cursor: pointer;
+  }
+  button:active { background: rgba(184,122,0,.4); }
+  button:focus-visible { outline: 2px solid var(--gold-light); outline-offset: 2px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    #veil { transition: none; }
+  }
+</style>
+</head>
+<body>
+  <canvas id="stage"></canvas>
+
+  <div id="purse">
+    <span class="coin"><b id="p-off">0</b> offering</span>
+    <span class="favor"><b id="p-fav">0</b> favor</span>
+    <span class="sup">food <b id="p-food">0</b> · clothing <b id="p-cloth">0</b></span>
+    <span class="lvl">Lv <b id="p-lvl">1</b><span id="bar"><i></i></span></span>
+  </div>
+
+  <div id="today">
+    <b id="today-label">—</b><span id="today-verse"></span>
+  </div>
+
+  <div id="hud">
+    <span id="status">Opening the doors…</span>
+    <span id="build" title="Running build">—</span>
+    <button id="openBuild" type="button">Build</button>
+    <button id="openMinistries" type="button">Ministries</button>
+    <button id="reopenAway" type="button" title="While you were away">Away</button>
+    <button id="turn" type="button">Turn</button>
+    <button id="recenter" type="button">Recenter</button>
+  </div>
+
+  <div id="sheet">
+    <h2>Build a room</h2>
+    <div id="catalog"></div>
+    <button id="closeBuild" type="button">Close</button>
+  </div>
+
+  <div id="service">
+    <span class="why" id="svc-why">Mostly strangers today</span>
+    <span class="verse" id="svc-verse">—</span>
+    <div class="row">
+      <button id="svc-start" type="button" class="primary">Begin service</button>
+      <button id="svc-pick" type="button">Choose sermon</button>
+    </div>
+  </div>
+
+  <div id="away">
+    <span class="absence" id="away-absence">—</span>
+    <h2>While you were away</h2>
+    <p class="headline" id="away-headline"></p>
+    <div class="tally" id="away-tally"></div>
+    <div id="away-body"></div>
+    <div class="row">
+      <button id="away-close" type="button" class="primary">Continue</button>
+      <button id="away-log" type="button">Earlier</button>
+    </div>
+  </div>
+
+  <div id="welcome">
+    <h2>Set your week</h2>
+    <p>Sunday is the Sabbath. Choose the two evenings your church gathers — you can change them later.</p>
+    <fieldset>
+      <legend>Bible Study</legend>
+      <div class="days" id="pick-study"></div>
+    </fieldset>
+    <fieldset>
+      <legend>Choir Rehearsal</legend>
+      <div class="days" id="pick-choir"></div>
+    </fieldset>
+    <p id="welcome-note" style="min-height:1.2em"></p>
+    <button id="welcome-go" type="button" class="primary">Open the doors</button>
+  </div>
+
+  <div id="ministrySheet">
+    <h2>Ministries</h2>
+    <div id="ministries"></div>
+    <button id="closeMinistries" type="button">Close</button>
+  </div>
+
+  <div id="sermonSheet" class="sheetish">
+    <h2>Choose a sermon</h2>
+    <div id="sermons"></div>
+    <button id="closeSermons" type="button">Close</button>
+  </div>
+
+  <div id="place">
+    <span id="why">Drag to position</span>
+    <button id="rotate" type="button">Rotate</button>
+    <button id="cancelPlace" type="button">Cancel</button>
+    <button id="confirm" type="button" class="primary">Build</button>
+  </div>
+
+  <div id="veil">
+    <h1>Except the Lord<em>Build the House</em></h1>
+    <div class="rule"></div>
+    <p>They labour in vain that build it. — Psalm 127:1</p>
+  </div>
+
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.128.0/build/three.module.js" } }
+</script>
+<script type="module" src="src/main.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', async () => {
+      try {
+        const reg = await navigator.serviceWorker.register('sw.js');
+        reg.update();   // pull a new worker now, not on some later visit
+      } catch {}
+    });
+  }
+</script>
+</body>
+</html>
