@@ -14,7 +14,7 @@
 // Bump BUILD on every deploy.
 // ============================================================
 
-const BUILD = 'v26-2026-08-23';
+const BUILD = 'v30-2026-08-24';
 const CACHE = `etl-${BUILD}`;
 
 const SHELL = [
@@ -32,7 +32,8 @@ const SHELL = [
   './src/render/characters.js', './src/render/bubble.js',
   './src/render/crowd.js', './src/render/picking.js',
   './src/render/placement.js', './src/render/sites.js', './src/render/pastor.js',
-  './src/render/interiors.js',
+  './src/render/interiors.js', './src/render/shapes.js',
+  './src/render/models.js', './src/data/models.js',
   './src/data/tuning.js', './src/data/needs.js', './src/data/rooms.js',
   './src/data/ministries.js', './src/data/schedule.js', './src/data/casting.js',
   './src/data/controls.js', './src/data/sermons.js', './src/data/ranks.js', './src/data/characters.js',

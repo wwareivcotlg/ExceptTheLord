@@ -13,12 +13,13 @@ export const PALETTE = {
   purple: 0x3c3489,
   gold: 0xb87a00,
 
-  // Structure
-  floorOak: 0x9c6f43,
-  floorOakDark: 0x7d572f,
-  plaster: 0xefe7d8,
-  plasterShade: 0xd9cdb8,
-  trim: 0x5a4632,
+  // Structure — warmer and a touch more saturated than realism.
+  // A church interior lit for a game should feel golden, not beige.
+  floorOak: 0xb07a44,
+  floorOakDark: 0x8d5c2e,
+  plaster: 0xf6efe0,
+  plasterShade: 0xe2d5bd,
+  trim: 0x6b5238,
 
   // Sanctuary
   pewWood: 0x6b4425,
@@ -27,9 +28,10 @@ export const PALETTE = {
   pulpit: 0x4a3018,
 
   // Ground & sky
-  ground: 0x5f6b52,
-  skyTop: 0xd8e2ee,
-  skyBottom: 0xb9a88f,
+  ground: 0x74895e,
+  groundEdge: 0x60734e,
+  skyTop: 0x8fb6de,
+  skyBottom: 0xf2dcc0,
 
   // Furniture. Kept muted so the sanctuary keeps the eye.
   steel: 0x9aa3ad,
@@ -51,21 +53,30 @@ export const PALETTE = {
 };
 
 export const LIGHTING = {
-  // Warm key from high and to one side, the way clerestory
-  // windows throw light across a sanctuary mid-morning.
-  keyColor: 0xfff1d6,
-  keyIntensity: 1.15,
+  // Warm key from high and to one side, the way clerestory windows
+  // throw light across a sanctuary mid-morning. The warm/cool split
+  // between key and fill is what stops flat-shaded geometry looking
+  // like plastic.
+  keyColor: 0xfff0cf,
+  keyIntensity: 1.5,
   keyPosition: { x: 14, y: 20, z: 9 },
 
-  fillColor: 0xa8bcd8,
-  fillIntensity: 0.35,
+  fillColor: 0x93b4dd,
+  fillIntensity: 0.5,
 
-  hemiSky: 0xdfe8f5,
-  hemiGround: 0x6a5a45,
-  hemiIntensity: 0.55,
+  // A low, cool backlight to separate figures from the floor.
+  rimColor: 0xbcd6f5,
+  rimIntensity: 0.42,
+  rimPosition: { x: -10, y: 5, z: -14 },
+
+  hemiSky: 0xcfe2f7,
+  hemiGround: 0x8a7050,
+  hemiIntensity: 0.62,
 
   shadowMapSize: 1024,
   shadowBounds: 22,
+
+  exposure: 1.06,
 };
 
 export const QUALITY = {

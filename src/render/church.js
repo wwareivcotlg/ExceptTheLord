@@ -15,6 +15,7 @@ import { PALETTE } from './palette.js';
 import { ROOM_BY_ID } from '../data/rooms.js';
 import { roomTransform, tileToWorld, floorExtent, pewLayout, chancelLayout, TILE } from './layout.js';
 import { buildInterior } from './interiors.js';
+import { roundedBox } from './shapes.js';
 
 const WALL_H = 1.25;
 const WALL_T = 0.12;
@@ -116,7 +117,7 @@ function buildEntrance(state) {
 
   for (const side of [-1, 1]) {
     const post = new THREE.Mesh(
-      new THREE.BoxGeometry(0.18, 1.6, 0.18),
+      roundedBox(0.18, 1.6, 0.18, 0.05),
       mat(PALETTE.trim)
     );
     post.position.set(p.x + side * TILE * 0.55, 0.8, p.z);
@@ -154,7 +155,7 @@ function buildRoom(state, room) {
   };
   for (const seg of wallSegments(w, d, doorLocal)) {
     const wall = new THREE.Mesh(
-      new THREE.BoxGeometry(seg.w, WALL_H, seg.d),
+      roundedBox(seg.w, WALL_H, seg.d, 0.04, 1),
       wallMat
     );
     wall.position.set(seg.x, WALL_H / 2, seg.z);
@@ -230,8 +231,8 @@ function buildSanctuaryInterior(group, size, room) {
   group.add(runner);
 
   // Pews, instanced: one seat mesh and one back mesh for all rows.
-  const seatGeo = new THREE.BoxGeometry(1, 0.12, 0.42);
-  const backGeo = new THREE.BoxGeometry(1, 0.55, 0.1);
+  const seatGeo = roundedBox(1, 0.12, 0.42, 0.05, 1);
+  const backGeo = roundedBox(1, 0.55, 0.1, 0.04, 1);
   const woodMat = mat(PALETTE.pewWood);
   const cushionMat = mat(PALETTE.pewCushion);
 
@@ -272,7 +273,7 @@ function buildSanctuaryInterior(group, size, room) {
 
   // The pulpit — the one place gold belongs inside the room.
   const pulpit = new THREE.Mesh(
-    new THREE.BoxGeometry(chancel.pulpit.w, chancel.pulpit.h, chancel.pulpit.d),
+    roundedBox(chancel.pulpit.w, chancel.pulpit.h, chancel.pulpit.d, 0.05),
     mat(PALETTE.pulpit)
   );
   pulpit.position.set(chancel.pulpit.x, 0.71, chancel.pulpit.z);
@@ -289,7 +290,7 @@ function buildSanctuaryInterior(group, size, room) {
 
   // Communion table, set below the platform.
   const table = new THREE.Mesh(
-    new THREE.BoxGeometry(chancel.table.w, chancel.table.h, chancel.table.d),
+    roundedBox(chancel.table.w, chancel.table.h, chancel.table.d, 0.05),
     mat(PALETTE.pewWood)
   );
   table.position.set(chancel.table.x, 0.31, chancel.table.z);

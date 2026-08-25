@@ -6,6 +6,22 @@
 import * as THREE from 'three';
 import { PALETTE, LIGHTING, QUALITY } from './palette.js';
 
+/** A vertical sky gradient — a flat colour reads as an empty viewport. */
+function skyGradient(top, bottom) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 2;
+  canvas.height = 128;
+  const c = canvas.getContext('2d');
+  const g = c.createLinearGradient(0, 0, 0, 128);
+  g.addColorStop(0, `#${top.toString(16).padStart(6, '0')}`);
+  g.addColorStop(1, `#${bottom.toString(16).padStart(6, '0')}`);
+  c.fillStyle = g;
+  c.fillRect(0, 0, 2, 128);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.magFilter = THREE.LinearFilter;
+  return tex;
+}
+
 export function createScene(canvas) {
   const renderer = new THREE.WebGLRenderer({
     canvas,
@@ -17,10 +33,14 @@ export function createScene(canvas) {
   renderer.outputEncoding = THREE.sRGBEncoding;
   renderer.shadowMap.enabled = QUALITY.shadows;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // Filmic tone mapping keeps the warm key from blowing out and
+  // gives the whole scene a softer, less plastic falloff.
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = LIGHTING.exposure;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(PALETTE.skyTop);
-  scene.fog = new THREE.Fog(PALETTE.skyBottom, 40, 90);
+  scene.background = skyGradient(PALETTE.skyTop, PALETTE.skyBottom);
+  scene.fog = new THREE.Fog(PALETTE.skyBottom, 46, 110);
 
   const camera = new THREE.PerspectiveCamera(38, 1, 0.5, 200);
 
@@ -51,6 +71,12 @@ export function createScene(canvas) {
   const fill = new THREE.DirectionalLight(LIGHTING.fillColor, LIGHTING.fillIntensity);
   fill.position.set(-12, 9, -10);
   scene.add(fill);
+
+  // Rim light: a cool edge that lifts figures off the floor. Without
+  // it, flat-shaded people sink into whatever they stand on.
+  const rim = new THREE.DirectionalLight(LIGHTING.rimColor, LIGHTING.rimIntensity);
+  rim.position.set(LIGHTING.rimPosition.x, LIGHTING.rimPosition.y, LIGHTING.rimPosition.z);
+  scene.add(rim);
 
   // --- Resize ---
   function resize() {

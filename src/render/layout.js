@@ -220,6 +220,20 @@ export const SEAT_TOP_Y = 0.58;
 export const CHAIR_SEAT_Y = 0.46;
 
 /**
+ * A seat's backrest, in the seat's OWN local space.
+ *
+ * Convention, shared with figures: local -z is forward. So the
+ * backrest is at POSITIVE local z — behind whoever is sitting —
+ * and facing is applied once, by rotating the whole object. The
+ * folding chairs were built with the back at negative z, which put
+ * it between the sitter and the pulpit.
+ */
+export const SEAT_BACK_LOCAL_Z = 0.19;
+
+/** The half-turn a seat needs to face a given direction. */
+export const seatYaw = (facing) => (facing < 0 ? 0 : Math.PI);
+
+/**
  * How a figure is posed when sitting.
  *
  * Two things this must get right, both of which were wrong first

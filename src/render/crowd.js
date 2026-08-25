@@ -10,8 +10,9 @@ import { FigurePool, buildFigure } from './characters.js';
 import { createBubble, setBubbleState, createPayoutPopup, stepPopup,
          createNameplate } from './bubble.js';
 import { tileToWorld, roomTransform, pewLayout, allSeatSlots, localToWorld,
-         seatedPose, CHAIR_SEAT_Y } from './layout.js';
+         seatedPose, CHAIR_SEAT_Y, SEAT_BACK_LOCAL_Z, seatYaw } from './layout.js';
 import { projectPoint } from './picking.js';
+import { roundedBox } from './shapes.js';
 import { castCongregant } from '../core/casting.js';
 import { bucketRng } from '../core/rng.js';
 import { congregationMix, baseSeats } from '../core/sanctuary.js';
@@ -118,10 +119,13 @@ export function createCrowd(sceneApi, state, visitors, playerId = 'local', onEve
 
   function buildChair() {
     const g = new THREE.Group();
-    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.05, 0.42), chairSeatMat);
+    const seat = new THREE.Mesh(roundedBox(0.42, 0.05, 0.42, 0.02, 1), chairSeatMat);
     seat.position.y = CHAIR_SEAT_Y - 0.025;
-    const back = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.04), chairSeatMat);
-    back.position.set(0, CHAIR_SEAT_Y + 0.21, -0.19);
+    // Local -z is forward, so the backrest sits at POSITIVE local
+    // z — behind the sitter. Facing is applied once, by rotating
+    // the chair, exactly as it is for the figure on it.
+    const back = new THREE.Mesh(roundedBox(0.42, 0.42, 0.04, 0.02, 1), chairSeatMat);
+    back.position.set(0, CHAIR_SEAT_Y + 0.21, SEAT_BACK_LOCAL_Z);
     const legGeo = new THREE.BoxGeometry(0.04, CHAIR_SEAT_Y, 0.04);
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
@@ -148,8 +152,8 @@ export function createCrowd(sceneApi, state, visitors, playerId = 'local', onEve
       const mesh = buildChair();
       const w = localToWorld(s.transform, slot);
       mesh.position.set(w.x, 0.06, w.z);
-      // The back is behind the sitter, who faces the chancel.
-      mesh.rotation.y = s.transform.rotationY + (slot.facing < 0 ? 0 : Math.PI);
+      // Same turn the figure on it gets — one rule, one place.
+      mesh.rotation.y = s.transform.rotationY + seatYaw(slot.facing);
       root.add(mesh);
       chairMeshes.set(i, mesh);
     }

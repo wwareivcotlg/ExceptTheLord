@@ -25,7 +25,7 @@ python3 -m http.server 8000
 # then open http://localhost:8000
 ```
 
-**Tests** (631 assertions, no browser required):
+**Tests** (687 assertions, no browser required):
 
 ```bash
 node test/offline.test.js
@@ -184,6 +184,42 @@ benches x 3 seats = 18. Capping the rules below that stranded one person alone o
 the back bench; capping above it would leave people with nowhere to render. And
 `seatCapacity()` counts pews plus folding chairs, so the renderer reads
 `allSeatSlots()` — pews first, then chairs — or everyone on a chair is invisible.
+
+## Models
+
+Kenney `.glb` assets load from `assets/models/furniture/` — see **ASSETS.md** for
+placement and how to add a piece. Everything degrades: a missing folder or a
+failed file falls back to procedural geometry, and the boot never blocks on it.
+
+**Kenney's rig is borrowed, its meshes are not.** Its body parts are 12-triangle
+cubes; the blocky look is texture. What is worth having is 27 animation clips,
+authored as rotation tracks on named nodes — so our figures use the same names,
+nesting and pivots and wear those clips directly. Missing file, hand-rolled
+motion, no breakage.
+
+## Art direction
+
+Everything is still procedural — no `.glb` files yet — but built from a rounded
+vocabulary in `render/shapes.js` rather than raw boxes. The rules that keep it
+looking intentional:
+
+- **Rounded, cached geometry.** `roundedBox`, `headGeometry`, `domeGeometry` are
+  built once and shared, so softening the whole church costs almost nothing.
+- **Warm key, cool fill, cool rim.** The temperature split is what stops
+  flat-shaded geometry reading as plastic; the rim light lifts figures off the
+  floor. Filmic tone mapping keeps the warm key from blowing out.
+- **A sky gradient, not a flat colour.** A flat fill reads as an empty viewport.
+- **Outlines are opt-in.** An inverted hull doubles draw calls, so only the
+  pastor gets one — he is the figure the eye should find first.
+- **Nothing stands perfectly still.** Idle figures breathe.
+- **Gold stays reserved** — doors, the pulpit, the baptismal handrails.
+
+**One seating convention, used by everything.** Local -z is forward, so a
+backrest sits at positive local z — behind whoever is on it — and facing is
+applied once by rotating the whole object (`seatYaw`). The folding chairs were
+built with the back at negative z, putting it between the sitter and the pulpit.
+Pews, folding chairs, and the pastor's chair now share the convention, and a test
+checks that a sitter's knees and their backrest are always on opposite sides.
 
 **Changing a room definition does not change existing saves.** Raising the
 sanctuary from 16 seats to 18 fixed new games and did nothing for one already in

@@ -12,7 +12,7 @@ import { findPath, PathCache, distanceToRoom } from '../src/sim/pathfinding.js';
 import { tileToWorld, roomTransform, floorExtent, pathToWorld, cameraFrame,
          pewLayout, chairSlots, seatSlots, allSeatSlots, chancelLayout,
          localToWorld, seatedPose, SEAT_TOP_Y, CHAIR_SEAT_Y,
-         TILE } from '../src/render/layout.js';
+         SEAT_BACK_LOCAL_Z, seatYaw, TILE } from '../src/render/layout.js';
 import { PALETTE, LIGHTING, QUALITY } from '../src/render/palette.js';
 import { readFileSync } from 'node:fs';
 import { VisitorSystem, WALK_SPEED, AUTO_SERVE_DELAY, SERVE_DURATION } from '../src/sim/visitors.js';
@@ -47,6 +47,7 @@ import { ensurePastor, advancePastor, pastorPose, phaseProgress,
          pastorBusy, PHASES } from '../src/core/pastor.js';
 import { PASTOR } from '../src/data/characters.js';
 import { FURNITURE, unfurnished } from '../src/data/furniture.js';
+import { MODELS, PIECE_MODELS, MATERIAL_COLORS, CHARACTER_CLIPS } from '../src/data/models.js';
 import { ROOMS } from '../src/data/rooms.js';
 import { moveCost, canMoveTo, canPickUp, MOVE_REASONS } from '../src/core/build.js';
 import { resolveOffline } from '../src/core/offline.js';
@@ -2737,6 +2738,195 @@ console.log('\n=== 87. A stale save cannot shrink the pews ===');
   ok('a full house fills every bench evenly, migrated save included',
      counts.length === 6 && counts.every((c) => c === 3),
      `(${counts.join(',')})`);
+}
+
+console.log('\n=== 88. Every seat faces the same way its sitter does ===');
+{
+  const size = { w: 6, d: 8 };
+  const plan = pewLayout(size);
+  const chancel = chancelLayout(size, plan);
+
+  // A local offset, once the seat has been turned to face `facing`.
+  const world = (localZ, facing) => (seatYaw(facing) === 0 ? localZ : -localZ);
+
+  ok('a backrest is expressed in local space, behind the sitter',
+     SEAT_BACK_LOCAL_Z > 0,
+     '(local -z is forward, so behind is positive — one convention for everything)');
+
+  // Pews and folding chairs must agree: back away from the pulpit.
+  const pewBack = plan.benches[0].backZ - plan.benches[0].z;
+  const chairBack = world(SEAT_BACK_LOCAL_Z, plan.facing);
+  ok('pew backrests sit away from the pulpit', pewBack > 0);
+  ok('folding chair backrests sit away from it too',
+     Math.sign(chairBack) === Math.sign(pewBack),
+     `(pew ${pewBack.toFixed(2)}, chair ${chairBack.toFixed(2)})`);
+
+  // And the person on the chair looks the same way as the pews.
+  const legH = 1.72 * 0.44;
+  const pewLegs = world(seatedPose(legH, plan.facing, SEAT_TOP_Y).legZ, plan.facing);
+  const chairLegs = world(seatedPose(legH, plan.facing, CHAIR_SEAT_Y).legZ, plan.facing);
+  ok('someone on a folding chair faces the same way as the pews',
+     Math.sign(pewLegs) === Math.sign(chairLegs),
+     `(pew legs ${pewLegs.toFixed(2)}, chair legs ${chairLegs.toFixed(2)})`);
+  ok('which is toward the pulpit', Math.sign(chairLegs) === plan.facing);
+  ok('and the backrest is on the opposite side from their knees',
+     Math.sign(chairBack) === -Math.sign(chairLegs),
+     '(a backrest in front of the sitter reads as facing the wrong way)');
+
+  // The pastor sits the other way, and his chair must follow him.
+  const pastorBack = world(SEAT_BACK_LOCAL_Z, chancel.chair.facing);
+  const pastorLegs = world(seatedPose(legH, chancel.chair.facing).legZ, chancel.chair.facing);
+  ok("the pastor's chair turns with him",
+     Math.sign(pastorBack) === -Math.sign(chairBack),
+     '(he faces the people; the congregation faces the chancel)');
+  ok('his backrest is still behind him',
+     Math.sign(pastorBack) === -Math.sign(pastorLegs));
+
+  ok('facing is applied by rotation alone',
+     seatYaw(-1) === 0 && seatYaw(1) === Math.PI,
+     '(never baked into an offset as well — that cancels out)');
+}
+
+console.log('\n=== 89. The art pass holds its shape ===');
+{
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const sw = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
+  const shapes = readFileSync(new URL('../src/render/shapes.js', import.meta.url), 'utf8');
+  const chars = readFileSync(new URL('../src/render/characters.js', import.meta.url), 'utf8');
+  const scene = readFileSync(new URL('../src/render/scene.js', import.meta.url), 'utf8');
+
+  ok('the shape vocabulary is cached and shared',
+     /const cache = new Map\(\)/.test(shapes),
+     '(softening everything must not multiply geometry)');
+  ok('rounded forms replace hard boxes in the figures',
+     /roundedBox\(/.test(chars) && /headGeometry\(/.test(chars));
+  ok('figures have shoes and hands', /shoeMat/.test(chars) && /const hand/.test(chars));
+  ok('a still crowd still breathes', /breathe/.test(chars),
+     '(a frozen congregation reads as a bug)');
+  ok('seated figures drop their blob shadow',
+     /blob\.visible = false/.test(chars),
+     '(a shadow under a seated figure floats on the floor)');
+
+  ok('outlines are opt-in, not on every figure',
+     /outline = false/.test(chars),
+     '(an inverted hull doubles draw calls — a congregation cannot afford it)');
+
+  ok('the sky is a gradient, not a flat fill', /skyGradient/.test(scene));
+  ok('there is a rim light to lift figures off the floor', /rimIntensity/.test(scene));
+  ok('tone mapping is on', /ACESFilmicToneMapping/.test(scene));
+
+  ok('shapes.js is cached by the service worker', sw.includes('shapes.js'));
+
+  // Budget discipline still applies.
+  ok('the poly budget is unchanged', ASSET_BUDGET.TARGET_TRIS_PER_CHARACTER <= 2500);
+  ok('and the pixel ratio is still capped', QUALITY.maxPixelRatio <= 2);
+}
+
+console.log('\n=== 90. Real models, with the boxes as a floor ===');
+{
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const sw = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
+  const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const interiors = readFileSync(new URL('../src/render/interiors.js', import.meta.url), 'utf8');
+  const models = readFileSync(new URL('../src/render/models.js', import.meta.url), 'utf8');
+
+  ok('GLTFLoader is resolvable from the import map',
+     /three\/addons\//.test(html),
+     '(it is not part of the three core bundle)');
+  ok('and it is pinned to the same three version',
+     (html.match(/three@0\.128\.0/g) || []).length >= 2);
+
+  // Compare CALL sites, not imports — an import line sits at the
+  // top of the file and makes any ordering look wrong.
+  const mainBody = main.replace(/^import[^\n]+\n/gm, '');
+  ok('models are preloaded before the church is built',
+     mainBody.indexOf('preloadModels(') < mainBody.indexOf('buildChurch('),
+     '(comparing call sites, not import lines)');
+  ok('a failed load never blocks the boot',
+     /preloadModels\(\)\.catch\(/.test(main),
+     '(a church rendered as boxes beats one rendered as nothing)');
+  ok('the loader gives up rather than hanging', /timeoutMs/.test(models));
+
+  ok('interiors ask whether a model exists', /hasModel\(/.test(interiors));
+  ok('and fall back to the rounded box when it does not',
+     interiors.indexOf('hasModel') < interiors.indexOf('roundedBox('));
+
+  ok('the model layer is cached by the service worker',
+     sw.includes('render/models.js') && sw.includes('data/models.js'));
+}
+
+console.log('\n=== 91. The model manifest matches the files ===');
+{
+  ok('every mapped piece names a model in the manifest',
+     Object.values(PIECE_MODELS).every((id) => MODELS[id] !== undefined),
+     `(${Object.values(PIECE_MODELS).join(', ')})`);
+  ok('every model names a file', Object.values(MODELS).every((m) => /\.glb$/.test(m.file)));
+  ok('and carries a scale', Object.values(MODELS).every((m) => m.scale > 0));
+
+  // Kenney's unit is ~0.4 where a tile here is 1.0.
+  ok('scales bring Kenney units up to tile scale',
+     Object.values(MODELS).every((m) => m.scale >= 1.5 && m.scale <= 3));
+
+  // The bench measurement the pews depend on.
+  const bench = MODELS.bench;
+  ok('the bench records where its seat surface is', bench.seatLocalY > 0);
+  ok('and at scale that lands near a usable seat height', (() => {
+    const seat = bench.seatLocalY * bench.scale;
+    return seat > 0.4 && seat < 0.6;
+  })(), `(${(bench.seatLocalY * bench.scale).toFixed(2)})`);
+  ok('two benches span about one pew', (() => {
+    const width = 0.4 * bench.scale * 2;      // measured model width
+    const plan = pewLayout({ w: 6, d: 8 });
+    return Math.abs(width - plan.benches[0].width) < 0.25;
+  })(), '(0.80 each against a 1.63 bench)');
+
+  ok('materials are recoloured by name, not by texture',
+     Object.values(MODELS).every((m) => !m.materials || typeof m.materials === 'object'));
+  ok('the shared vocabulary covers the common names',
+     ['wood', 'carpet', 'metal'].every((n) => MATERIAL_COLORS[n]));
+}
+
+console.log('\n=== 92. Borrowed animation, our own geometry ===');
+{
+  const chars = readFileSync(new URL('../src/render/characters.js', import.meta.url), 'utf8');
+  const models = readFileSync(new URL('../src/render/models.js', import.meta.url), 'utf8');
+
+  // The clips are rotation tracks on named nodes. Retargeting works
+  // only if our rig uses the same names and the same nesting.
+  for (const node of ['root', 'leg-left', 'leg-right', 'torso', 'arm-left', 'arm-right', 'head']) {
+    ok(`the rig has a node named ${node}`, chars.includes(`'${node}'`));
+  }
+  ok('arms and head hang off the torso, as in the source rig',
+     /torso\.add\(arm\)/.test(chars) && /torso\.add\(head\)/.test(chars));
+  ok('legs and torso hang off root',
+     /root\.add\(leg\)/.test(chars) && /root\.add\(torso\)/.test(chars));
+
+  ok('the rig is built at the source scale and then shrunk',
+     /rigScale = band\.height \/ RIG\.height/.test(chars),
+     "(so the clips' root translation arrives in the right units)");
+  ok('and the source height is recorded', CHARACTER_CLIPS.rigHeight > 2);
+
+  ok('joints pivot at the joint, not the middle of the limb',
+     /leg\.position\.set\(side \* RIG\.hipX, RIG\.hipY/.test(chars) &&
+     /shin\.position\.y = -RIG\.legLen/.test(chars),
+     '(rotation clips look wrong on a limb that pivots about its centre)');
+
+  ok('motion falls back when the clip file is absent',
+     /if \(hasClips\(\)\)/.test(chars) && /hand-rolled/.test(chars));
+  ok('a missing clip file resolves rather than rejecting',
+     /resolve\(null\)/.test(models),
+     '(no clips must never break the boot)');
+
+  ok('walking crossfades rather than snapping', /blend \+=/.test(chars));
+  ok('a crowd does not move in lockstep',
+     /actions\.idle\.time = Math\.random/.test(chars));
+
+  // Sitting stays ours: a person has to meet a real pew.
+  ok('sitting is not delegated to the clip',
+     /Deliberately NOT the/.test(chars),
+     '(the clip lands wherever its own rig puts it)');
+  ok('the clip manifest names the ones we use',
+     ['idle', 'walk', 'sit'].every((k) => CHARACTER_CLIPS.clips[k]));
 }
 
 console.log(`\n${'='.repeat(46)}\n  ${pass} passed, ${fail} failed\n${'='.repeat(46)}\n`);

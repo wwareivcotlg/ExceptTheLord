@@ -24,6 +24,7 @@ import { buildChurch } from './render/church.js';
 import { createCrowd } from './render/crowd.js';
 import { createSites } from './render/sites.js';
 import { createPastor } from './render/pastor.js';
+import { preloadModels, loadReport } from './render/models.js';
 import { createPlacementTool } from './render/placement.js';
 import { installTapHandler } from './render/picking.js';
 import { PathCache } from './sim/pathfinding.js';
@@ -66,6 +67,11 @@ async function boot() {
   }
   let counter = (saved?.counter || 0) + 1;
   writeLocal(state, counter);
+
+  // Models are optional. If the folder is missing or a file fails,
+  // every piece falls back to procedural geometry.
+  const models = await preloadModels().catch(() => ({ loaded: 0, failed: 0, total: 0 }));
+  if (models.failed) console.warn('[models]', loadReport());
 
   const sceneApi = createScene(canvas);
   const rig = createCameraRig(sceneApi, state, canvas);

@@ -9,7 +9,9 @@
 import * as THREE from 'three';
 import { PALETTE } from './palette.js';
 import { buildFigure } from './characters.js';
-import { roomTransform, pewLayout, chancelLayout, localToWorld } from './layout.js';
+import { roundedBox } from './shapes.js';
+import { roomTransform, pewLayout, chancelLayout, localToWorld,
+         SEAT_BACK_LOCAL_Z, seatYaw } from './layout.js';
 import { ensurePastor, pastorPose } from '../core/pastor.js';
 
 export function createPastor(sceneApi, state, playerId = 'local') {
@@ -40,27 +42,30 @@ export function createPastor(sceneApi, state, playerId = 'local') {
       const c = p.chancel.chair;
       chairMesh = new THREE.Group();
       const seat = new THREE.Mesh(
-        new THREE.BoxGeometry(c.w, 0.1, c.d),
+        roundedBox(c.w, 0.1, c.d, 0.03),
         new THREE.MeshLambertMaterial({ color: PALETTE.pewWood })
       );
       seat.position.y = c.seatY;
       const back = new THREE.Mesh(
-        new THREE.BoxGeometry(c.w, 0.62, 0.08),
+        roundedBox(c.w, 0.62, 0.08, 0.03),
         new THREE.MeshLambertMaterial({ color: PALETTE.pulpit })
       );
-      // Backrest behind him — he faces the people, like the pews.
-      back.position.set(0, c.seatY + 0.31, -c.facing * (c.d / 2));
+      // Backrest at positive local z — behind him. The chair is
+      // then turned to face the people, same as every other seat.
+      back.position.set(0, c.seatY + 0.31, SEAT_BACK_LOCAL_Z);
       seat.castShadow = back.castShadow = true;
       chairMesh.add(seat, back);
       const w = localToWorld(p.transform, { x: c.x, z: c.z });
       chairMesh.position.set(w.x, 0, w.z);
-      chairMesh.rotation.y = p.transform.rotationY;
+      chairMesh.rotation.y = p.transform.rotationY + seatYaw(c.facing);
       root.add(chairMesh);
     }
 
     if (!figure) {
       const pastor = ensurePastor(state, playerId);
-      figure = buildFigure(pastor.appearance);
+      // Outlined: he is the one figure the eye should find first,
+      // and a single figure can afford the extra draw calls.
+      figure = buildFigure(pastor.appearance, { outline: true });
       root.add(figure);
     }
     return p;
