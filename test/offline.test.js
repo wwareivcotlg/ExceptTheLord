@@ -2929,5 +2929,53 @@ console.log('\n=== 92. Borrowed animation, our own geometry ===');
      ['idle', 'walk', 'sit'].every((k) => CHARACTER_CLIPS.clips[k]));
 }
 
+console.log('\n=== 93. Figures are in proportion ===');
+{
+  // THE BUG THIS CATCHES: moving to rig units changed `head` from a
+  // world size (~0.24) to a multiplier (1.0), but the formula still
+  // multiplied it by 1.9. Heads came out at 73% of body height —
+  // every test passed and the game rendered floating heads.
+  const chars = readFileSync(new URL('../src/render/characters.js', import.meta.url), 'utf8');
+
+  const bands = {};
+  const bandBlock = chars.match(/const BANDS = \{([\s\S]*?)\n\};/)[1];
+  for (const m of bandBlock.matchAll(/(\w+):\s*\{ height: ([\d.]+), girth: ([\d.]+), head: ([\d.]+) \}/g)) {
+    bands[m[1]] = { height: +m[2], girth: +m[3], head: +m[4] };
+  }
+  ok('the three bands are declared', Object.keys(bands).length === 3);
+
+  const rig = {};
+  for (const m of chars.matchAll(/(hipY|torsoY|torsoLen|headY|armLen|legLen):\s*([\d.]+)/g)) {
+    rig[m[1]] = +m[2];
+  }
+
+  for (const [name, b] of Object.entries(bands)) {
+    const bodyTop = rig.torsoY + rig.headY + b.head / 2;
+    const ratio = b.head / bodyTop;
+    ok(`${name} heads are a plausible fraction of the body`,
+       ratio > 0.18 && ratio < 0.4,
+       `(${(ratio * 100).toFixed(0)}% — stylized runs 25-35%, a bug looks like 73%)`);
+  }
+
+  ok('the head size is a diameter, not a multiplier',
+     /band\.head IS the diameter/.test(chars) &&
+     /headGeometry\(band\.head\)/.test(chars),
+     '(the multiplier reading is what produced floating heads)');
+
+  ok('heads are smaller than torsos',
+     Object.values(bands).every((b) => b.head < b.girth));
+  ok('and hands are much smaller than heads',
+     /headGeometry\(band\.head \* 0\.3\)/.test(chars));
+
+  // The figure should end up roughly the height it claims.
+  for (const [name, b] of Object.entries(bands)) {
+    const bodyTop = rig.torsoY + rig.headY + b.head / 2;
+    const scaled = bodyTop * (b.height / CHARACTER_CLIPS.rigHeight);
+    ok(`${name} figures stand about their stated height`,
+       Math.abs(scaled - b.height) < b.height * 0.06,
+       `(${scaled.toFixed(2)} against ${b.height})`);
+  }
+}
+
 console.log(`\n${'='.repeat(46)}\n  ${pass} passed, ${fail} failed\n${'='.repeat(46)}\n`);
 process.exit(fail ? 1 : 0);

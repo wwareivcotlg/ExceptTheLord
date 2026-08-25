@@ -25,7 +25,7 @@ python3 -m http.server 8000
 # then open http://localhost:8000
 ```
 
-**Tests** (687 assertions, no browser required):
+**Tests** (697 assertions, no browser required):
 
 ```bash
 node test/offline.test.js
@@ -190,6 +190,12 @@ the back bench; capping above it would leave people with nowhere to render. And
 Kenney `.glb` assets load from `assets/models/furniture/` — see **ASSETS.md** for
 placement and how to add a piece. Everything degrades: a missing folder or a
 failed file falls back to procedural geometry, and the boot never blocks on it.
+
+**Figure sizes are in rig units, and `head` is a DIAMETER.** When the rig moved
+to Kenney's coordinate space, `band.head` changed from a world size (~0.24) to a
+multiplier (1.0) while the formula downstream still multiplied it by 1.9 — heads
+came out at 73% of body height. Every test passed; the game rendered floating
+heads. Test 93 now checks the ratio directly.
 
 **Kenney's rig is borrowed, its meshes are not.** Its body parts are 12-triangle
 cubes; the blocky look is texture. What is worth having is 27 animation clips,

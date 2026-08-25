@@ -35,16 +35,21 @@ import { CHARACTER_CLIPS } from '../data/models.js';
 const RIG = {
   height: CHARACTER_CLIPS.rigHeight,        // 2.4
   hipY: 1.0, hipX: 0.2, legLen: 1.0,
-  torsoY: 0.7, torsoLen: 1.15,
+  torsoY: 0.7, torsoLen: 0.95,
   shoulder: { x: 0.4, y: 1.1, z: -0.1 },    // relative to torso
   armLen: 0.95,
   headY: 1.2, headSize: 0.92,               // relative to torso
 };
 
+// All sizes are in RIG units (the rig is RIG.height tall).
+// `head` is the head's DIAMETER, not a multiplier — that confusion
+// is exactly what produced 73%-of-body heads. Kenney's own head is
+// 0.8 of a 2.4 rig, about a third; a little smaller reads better on
+// figures that have actual necks and shoulders.
 const BANDS = {
-  adult: { height: 1.72, girth: 0.82, head: 1.0 },
-  elder: { height: 1.62, girth: 0.86, head: 1.0 },
-  teen:  { height: 1.44, girth: 0.72, head: 1.05 },
+  adult: { height: 1.72, girth: 0.80, head: 0.62 },
+  elder: { height: 1.62, girth: 0.84, head: 0.62 },
+  teen:  { height: 1.44, girth: 0.70, head: 0.58 },
 };
 
 const bandOf = (id) =>
@@ -127,17 +132,17 @@ export function buildFigure(composition, { outline = false } = {}) {
   root.add(torso);
 
   const chest = new THREE.Mesh(
-    roundedBox(band.girth, RIG.torsoLen, band.girth * 0.62, 0.16), cloth
+    roundedBox(band.girth, RIG.torsoLen, band.girth * 0.62, 0.14), cloth
   );
-  chest.position.y = RIG.torsoLen * 0.5;
+  chest.position.y = RIG.torsoLen * 0.58;
   chest.castShadow = true;
   torso.add(chest);
   if (outline) shell.push(addOutline(chest, 0.04));
 
   const shoulders = new THREE.Mesh(
-    roundedBox(band.girth * 1.04, RIG.torsoLen * 0.26, band.girth * 0.64, 0.16), cloth
+    roundedBox(band.girth * 1.04, RIG.torsoLen * 0.3, band.girth * 0.64, 0.14), cloth
   );
-  shoulders.position.y = RIG.torsoLen * 0.94;
+  shoulders.position.y = RIG.torsoLen * 1.0;
   shoulders.castShadow = true;
   torso.add(shoulders);
 
@@ -152,7 +157,7 @@ export function buildFigure(composition, { outline = false } = {}) {
     const sleeve = new THREE.Mesh(armGeo, cloth);
     sleeve.position.y = -RIG.armLen * 0.45;
     sleeve.castShadow = true;
-    const hand = new THREE.Mesh(headGeometry(band.head * 0.34), skin);
+    const hand = new THREE.Mesh(headGeometry(band.head * 0.3), skin);
     hand.position.y = -RIG.armLen * 0.92;
     arm.add(sleeve, hand);
     torso.add(arm);
@@ -165,18 +170,20 @@ export function buildFigure(composition, { outline = false } = {}) {
   head.position.set(0, RIG.headY, 0);
   torso.add(head);
 
-  const skull = new THREE.Mesh(headGeometry(band.head * RIG.headSize * 1.9), skin);
+  // band.head IS the diameter. No multiplier.
+  const skull = new THREE.Mesh(headGeometry(band.head), skin);
   skull.castShadow = true;
   head.add(skull);
   if (outline) shell.push(addOutline(skull, 0.04));
 
-  const neck = new THREE.Mesh(limbGeometry(band.head * 0.2, 0.18), skin);
-  neck.position.y = -RIG.headY * 0.22;
+  const neck = new THREE.Mesh(limbGeometry(band.head * 0.22, 0.2), skin);
+  neck.position.y = -band.head * 0.52;
   head.add(neck);
 
   const style = HAIR[composition.hair];
   if (style) {
-    const r = band.head * RIG.headSize * 0.95;
+    // Hair sits just proud of the skull, so this is a RADIUS.
+    const r = band.head * 0.52;
     if (style.kind === 'hat') {
       const brim = new THREE.Mesh(
         new THREE.CylinderGeometry(r * style.brim, r * style.brim, 0.06, 14), hairMat
@@ -222,7 +229,8 @@ export function buildFigure(composition, { outline = false } = {}) {
   for (const s of shell) torso.add(s);
 
   // ---- Grounding ----
-  const blob = contactShadow(band.girth * 0.62);
+  // In world units — the blob is on the outer group, not the rig.
+  const blob = contactShadow(0.3);
   group.add(blob);
 
   const legHeightWorld = RIG.hipY * rigScale;

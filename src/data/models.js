@@ -33,7 +33,7 @@ export const MODEL_BASE = 'assets/models/furniture/';
 export const CHARACTER_CLIPS = {
   file: 'assets/models/characters/character-a.glb',
   // Kenney's rig is about 2.4 units tall; ours is scaled to match.
-  rigHeight: 2.4,
+  rigHeight: 2.25,
   clips: {
     idle: 'idle',
     walk: 'walk',

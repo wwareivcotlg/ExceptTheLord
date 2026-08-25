@@ -1,5 +1,5 @@
 // Bump this on every deploy. It must match BUILD in sw.js.
-export const BUILD = 'v30-2026-08-24';
+export const BUILD = 'v31-2026-08-24';
 
 /**
  * Short form for the HUD: "V20".
